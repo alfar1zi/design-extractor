@@ -1,0 +1,46 @@
+{
+  "name": "design-extractor",
+  "version": "0.1.0",
+  "description": "Skill + CLI for deep, faithful reference capture of any website: download real source, watch it move in a browser, document tokens/components/motion. Stops being a screenshot trap.",
+  "type": "module",
+  "bin": {
+    "design-extractor": "./scripts/cli.mjs",
+    "design-extractor-save": "./scripts/saveweb2zip.mjs",
+    "design-extractor-find": "./scripts/find-refs.mjs",
+    "design-extractor-inspect": "./scripts/inspect.mjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "install:browsers": "playwright install chromium",
+    "test": "node --test scripts/__tests__"
+  },
+  "dependencies": {
+    "playwright": "^1.48.0",
+    "undici": "^6.0.0",
+    "yauzl": "^3.2.0"
+  },
+  "optionalDependencies": {
+    "@mozilla/readability": "^0.5.0",
+    "jsdom": "^25.0.0"
+  },
+  "keywords": [
+    "skill",
+    "agent",
+    "design",
+    "reference",
+    "claude-code",
+    "opencode",
+    "playwright",
+    "scrape",
+    "audit",
+    "motion"
+  ],
+  "license": "MIT",
+  "author": "alfar1zi",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alfar1zi/design-extractor.git"
+  }
+}

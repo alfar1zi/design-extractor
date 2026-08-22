@@ -1,0 +1,49 @@
+# dependencies
+node_modules/
+
+# build / cache
+dist/
+*.log
+.npm/
+.eslintcache
+.DS_Store
+Thumbs.db
+
+# env
+.env
+.env.local
+
+# skill runtime artifacts (generated per-run, not source)
+proof/
+refs/
+out/
+.cache/
+playwright-report/
+test-results/
+
+# internal working notes, planning, session dumps (NOT deliverables)
+# only the explicit deliverable .md files in repo root are tracked:
+#   README.md, SKILL.md, AGENTS.md, LICENSE, CONTRIBUTING.md
+notes/
+working/
+sessions/
+drafts/
+.claude/
+.opencode/
+.cursor/
+.harness/
+.scratch/
+*.tmp.md
+*.draft.md
+*_notes.md
+*_plan.md
+*_internal.md
+session-*.md
+chat-*.md
+transcript-*.md
+__notes__/
+
+# editor
+.vscode/
+.idea/
+*.swp
