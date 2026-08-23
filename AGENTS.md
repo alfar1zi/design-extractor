@@ -2,88 +2,101 @@
 
 ## Project
 
-`design-extractor` is a portable agent skill (Node.js ESM) that captures a 1:1 design reference from a live website: downloads real source (HTML/CSS/JS/images), deep-reads the design system, drives a real browser to record motion/interactions/breakpoints, and writes a single reference doc. It exists because screenshot-only references miss source architecture, animation, and runtime DOM. Loads into any agent runtime that reads `SKILL.md` frontmatter (Claude Code, OpenCode, Hermes, Cursor, etc.). Bins: `design-extractor`, `design-extractor-save`, `design-extractor-find`, `design-extractor-inspect`.
+`design-extractor` is a Node.js ESM skill and CLI for capturing 1:1 design references from live websites. It downloads real source files (HTML/CSS/JS/images), drives a Playwright browser to record scroll, interactions, and breakpoints, and writes a single merged reference doc. Bins: `design-extractor`, `design-extractor-save`, `design-extractor-find`, `design-extractor-inspect`. Loads into Claude Code, OpenCode, Hermes, and Cursor via the `SKILL.md` frontmatter.
 
-## Hard rules
+---
 
-1. **No AI in git history. Ever.** No agent (Claude, OpenCode, Hermes, Cursor, GPT, Copilot, or any other) may commit, push, or appear as git author or co-author. Only the human owner: `alfar1zi <f.alfarizii10@gmail.com>`. `git log` must be 100% human. No `Co-authored-by: <AI> <...>` trailers in commit messages. If an AI tool auto-adds a trailer, strip it before committing.
-2. **No em dash** (`U+2014`) anywhere. Code, comments, docs, commit messages. Use ` - `, `--`, or rewrite the sentence.
-3. **No emoji** as UI icons, in code comments, or in commit messages. ASCII (`->`, `*`, `>`) is fine.
-4. **No new dependencies without justification.** PR description must state why the dep is needed and why a Node 18+ stdlib feature or existing dep can't cover it. Maintainer approval required. Bias toward stdlib.
-5. **Never commit generated artifacts.** `refs/`, `out/`, `.cache/`, `playwright-report/`, `test-results/`, `node_modules/`, `dist/`, `*.log`. They are gitignored; treat the rule as belt-and-suspenders.
-6. **Never commit secrets.** No `.env`, API keys, session tokens, `.npmrc` auth. Use env vars at runtime.
-7. **Max 6 .md files at root** (README, SKILL, AGENTS, LICENSE, CONTRIBUTING, and at most one more). Justify any addition in the PR. Expect pushback.
-8. **Keep scripts under 400 lines.** Pure helpers must be exported for tests.
-
-## Commands
+## Setup
 
 ```bash
-# setup (once)
+node --version          # must be 18+
 npm install
-npm run install:browsers          # downloads Playwright chromium
-
-# run
-npx design-extractor-find --prompt "premium saas landing dark" --count 5
-npx design-extractor-save --url https://target.example --out ./refs/target
-npx design-extractor-inspect --url https://target.example --out ./refs/target/live --viewport 1440x900
-npx design-extractor <url>        # top-level orchestrator (calls find + save + inspect + merge)
-
-# test
-npm test                          # runs node --test scripts/__tests__/*.test.mjs
+npm run install:browsers   # downloads Playwright Chromium
 ```
+
+A one-shot installer also exists: `install.sh` (macOS/Linux) and `install.ps1` (Windows). Both are in the repo root.
+
+---
 
 ## Code style
 
 - ESM only (`"type": "module"`). No CommonJS.
-- No classes. Plain functions + top-level `await` inside `async main()`.
-- Hand-rolled arg parsing. No `commander`/`yargs`.
+- No classes. Plain functions and top-level `await` inside `async main()`.
+- Hand-rolled arg parsing. No `commander`, no `yargs`.
 - Native `fetch` (Node 18+). No `axios`, no `node-fetch`.
-- Lazy-import heavy deps (`playwright`, `yauzl`) so unit tests can import pure helpers without `npm install`.
+- Lazy-import heavy deps (`playwright`, `yauzl`) so unit tests can import pure helpers without the browsers installed.
 - ANSI color only when `process.stdout.isTTY && !process.env.NO_COLOR`. No `chalk`.
 - Shebang `#!/usr/bin/env node` on every CLI script.
 - Entry guard: `if (import.meta.url === pathToFileURL(process.argv[1]).href) main()` so `node script.mjs` runs but `import './script.mjs'` does not.
-- English comments. No fluff comments. No "AI-generated" tells (no `data1`/`temp`/`result2`, no textbook narration).
+- English comments. Concise. No AI-generated tells: no `data1`, `temp`, `result2`, no textbook narration.
+
+---
 
 ## Testing
 
 - Runner: `node --test scripts/__tests__/*.test.mjs`. No Jest, no Vitest.
 - Pure helper functions must be `export`ed and covered by at least one assertion.
-- Smoke tests only. No coverage threshold gating. This is a small skill, not a SaaS.
-- Tests must run without network access (mock or use fixtures).
+- Smoke tests only. No coverage threshold gating.
+- Tests must run without network access: mock or use fixtures.
+- 68 unit tests are currently passing across the 6 scripts.
+
+---
 
 ## File layout
 
 ```
 design-extractor/
-  package.json              bins, deps, scripts (source)
-  README.md                 quick start (source, tracked)
-  SKILL.md                  agent frontmatter + skill spec (source, tracked)
-  AGENTS.md                 this file (source, tracked)
-  LICENSE                   MIT (source, tracked)
-  scripts/                  source
-    cli.mjs                 top-level orchestrator
-    saveweb2zip.mjs         download via saveweb2zip API
-    find-refs.mjs           discover candidate URLs
-    inspect.mjs             Playwright runtime capture
-    __tests__/              unit tests (source)
-  node_modules/             ignored
-  refs/ out/ .cache/        generated per run, ignored
-  playwright-report/        Playwright HTML report, ignored
-  notes/ working/ sessions/ drafts/   internal working notes, ignored
-  .claude/ .opencode/ .cursor/        agent runtime state, ignored
+  package.json          bins, deps, scripts
+  README.md             quick start and reference for humans
+  SKILL.md              agent frontmatter and skill spec for runtimes
+  AGENTS.md             this file, contributor conventions
+  LICENSE               MIT
+  install.sh            one-shot installer, macOS/Linux
+  install.ps1           one-shot installer, Windows
+  scripts/
+    cli.mjs             top-level orchestrator
+    saveweb2zip.mjs     download via saveweb2zip API
+    find-refs.mjs       discover candidate URLs
+    inspect.mjs         Playwright runtime capture
+    scan-libs.mjs       animation library fingerprint scan
+    __tests__/          unit tests, one file per script
+  examples/             tracked log files from real end-to-end runs
 ```
+
+Generated directories (`refs/`, `out/`, `.cache/`, `playwright-report/`, `node_modules/`) are gitignored. Do not commit them.
+
+---
 
 ## When adding a script
 
-- Add the bin entry to `package.json` under `bin`.
-- Export pure helpers (arg parser, URL parser, validators) so tests can hit them.
+- Add a bin entry under `package.json` `bin`.
+- Export pure helpers (arg parser, URL parser, validators) so tests can import them without side effects.
 - Write one smoke test in `scripts/__tests__/<name>.test.mjs`.
-- Update `SKILL.md` flag table if flags are user-facing.
-- Keep the file under 400 lines. If a script grows past that, split it.
+- Update README and `SKILL.md` flag tables if the flags are user-facing.
+- Keep the file under 400 lines. If it grows past that, split helpers into a sibling module.
+
+---
 
 ## Commit message format
 
-- Imperative, lowercase, no period, no trailers.
+- Imperative, lowercase, no trailing period.
 - Example: `port saveweb2zip to node esm`
-- No `Co-authored-by:` lines. No `Signed-off-by:` unless the maintainer adds it manually. No `Generated with:` footers.
 - One logical change per commit.
+- Use `git commit -s` only if your corporate workflow requires sign-off. No `Co-authored-by:` or `Generated with:` trailers.
+
+---
+
+## Pull request workflow
+
+- Fork the repo, branch off `main`, run `npm test` before pushing.
+- Open a PR with a description of what changed and why.
+- Maintainer reviews and merges. No bot auto-merge.
+
+---
+
+## Out of scope
+
+- Do not add new dependencies without justification in the PR description. Node 18+ stdlib covers most of what this skill needs; existing deps cover the rest.
+- Do not add a build step. The CLI runs directly from source.
+- Do not add a coverage threshold or CI runner unless the maintainer asks.
+- Do not add more than one new `.md` file at the repo root without a clear reason. Each file needs an active maintainer to stay accurate.
