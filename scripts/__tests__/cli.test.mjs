@@ -93,6 +93,20 @@ test('buildChildArgs propagates no-* flags to inspect', () => {
   assert.ok(out[0][1].includes('--no-sweep'));
 });
 
+test('buildChildArgs passes --site-dir to inspect when save also runs', () => {
+  const out = buildChildArgs({ out: './o', url: 'https://x.test', skipSave: false, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true });
+  const inspectArgs = out.find(([n]) => n === 'inspect')[1];
+  const siteIdx = inspectArgs.indexOf('--site-dir');
+  assert.notEqual(siteIdx, -1, 'inspect must receive --site-dir when save runs');
+  assert.equal(inspectArgs[siteIdx + 1], join('./o', 'site'));
+});
+
+test('buildChildArgs omits --site-dir when skipSave is true', () => {
+  const out = buildChildArgs({ out: './o', url: 'https://x.test', skipSave: true, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true });
+  const inspectArgs = out.find(([n]) => n === 'inspect')[1];
+  assert.ok(!inspectArgs.includes('--site-dir'), 'inspect must NOT receive --site-dir when save was skipped');
+});
+
 test('buildReferenceStub has all 7 sections', () => {
   const md = buildReferenceStub({ url: 'https://x.test', host: 'x.test', outDir: '/o', sourceDir: '/o/site', liveDir: '/o/live', viewport: '1440x900', timestamp: '2026-08-22T10:00:00Z' });
   assert.match(md, /## 1\. Design read/);

@@ -51,6 +51,8 @@ export function buildChildArgs(opts) {
   }
   if (!opts.skipInspect) {
     const inspect = ['--url', opts.url, '--out', join(opts.out, 'live'), '--viewport', opts.viewport, '--timeout', String(opts.timeout)];
+    // Only pass --site-dir when save also runs (orchestrator path); the save step extracts to <opts.out>/site.
+    if (!opts.skipSave) inspect.push('--site-dir', join(opts.out, 'site'));
     if (!opts.scroll) inspect.push('--no-scroll');
     if (!opts.interactions) inspect.push('--no-interactions');
     if (!opts.sweep) inspect.push('--no-sweep');

@@ -30,8 +30,8 @@ Three commands produce a complete reference folder under `./refs/<site>/`:
 
 ```bash
 npx design-extractor          https://linear.app --out ./refs/linear
-npx design-extractor-save     https://stripe.com  --out ./refs/stripe
-npx design-extractor-inspect  https://itomdev.com --out ./refs/itomdev/live
+npx design-extractor-save     --url https://stripe.com  --out ./refs/stripe
+npx design-extractor-inspect  --url https://itomdev.com --out ./refs/itomdev/live
 ```
 
 The four bins:

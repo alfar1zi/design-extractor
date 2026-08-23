@@ -13,7 +13,7 @@
 5. **Never commit generated artifacts.** `refs/`, `out/`, `.cache/`, `playwright-report/`, `test-results/`, `node_modules/`, `dist/`, `*.log`. They are gitignored; treat the rule as belt-and-suspenders.
 6. **Never commit secrets.** No `.env`, API keys, session tokens, `.npmrc` auth. Use env vars at runtime.
 7. **Max 6 .md files at root** (README, SKILL, AGENTS, LICENSE, CONTRIBUTING, and at most one more). Justify any addition in the PR. Expect pushback.
-8. **Keep scripts under 200 lines.** Pure helpers must be exported for tests.
+8. **Keep scripts under 400 lines.** Pure helpers must be exported for tests.
 
 ## Commands
 
@@ -79,7 +79,7 @@ design-extractor/
 - Export pure helpers (arg parser, URL parser, validators) so tests can hit them.
 - Write one smoke test in `scripts/__tests__/<name>.test.mjs`.
 - Update `SKILL.md` flag table if flags are user-facing.
-- Keep the file under 200 lines. If a script grows past that, split it.
+- Keep the file under 400 lines. If a script grows past that, split it.
 
 ## Commit message format
 

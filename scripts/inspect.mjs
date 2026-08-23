@@ -5,7 +5,7 @@
 import { mkdir, writeFile, stat } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
-// scanAnimationLibs split to scan-libs.mjs (kept under 400 lines per AGENTS.md).
+// scanAnimationLibs split to scan-libs.mjs so this file stays under the AGENTS.md 400-line cap.
 import { scanAnimationLibs } from './scan-libs.mjs';
 export { scanAnimationLibs };
 

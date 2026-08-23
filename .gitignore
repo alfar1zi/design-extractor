@@ -16,6 +16,7 @@ Thumbs.db
 # skill runtime artifacts (generated per-run, not source)
 proof/
 refs/
+ref_*/             # default save dir pattern (ref_<YYYYMMDD_HHmmss>) at cwd root
 out/
 .cache/
 playwright-report/
