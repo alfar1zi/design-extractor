@@ -64,4 +64,4 @@ Ok "=========================================="
 
 # Step 6: point agent at the skill file.
 $skillPath = Join-Path $repoRoot "SKILL.md"
-Ok "SKILL.md: $skillPath -- point your agent at this file"
+Ok "SKILL.md: $skillPath: point your agent at this file"

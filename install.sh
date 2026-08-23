@@ -54,4 +54,4 @@ ok "  npx design-extractor <url>"
 ok "=========================================="
 
 # Step 6: point agent at the skill file.
-ok "SKILL.md: ${REPO_ROOT}/SKILL.md -- point your agent at this file"
+ok "SKILL.md: ${REPO_ROOT}/SKILL.md: point your agent at this file"

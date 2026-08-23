@@ -1,6 +1,14 @@
 ---
 name: design-extractor
-description: Use when the user wants a 1:1 design reference from a live website. Capture the real source (HTML/CSS/JS/images), not just a screenshot. Downloads the site, deep-reads the design system, drives a real browser to record motion/interactions/breakpoints, then writes a single reference doc covering tokens, components, layout, animations, assets. Feeds taste libraries and redesign builds. Triggers on "ambil referensi dari [URL]", "bikin kayak site ini", "study this website", "extract design from", "redesign target", "reference capture". NOT for reading one public docs page (use webfetch), or quick lookups.
+description: >
+  Stop copying pixels. Screenshots miss the motion. Extract the actual source,
+  computed tokens, and runtime behavior for AI agents. Downloads source via
+  saveweb2zip, runs Playwright to extract screenshots, a11y tree, resolved CSS
+  tokens, motion presence, and interaction data into a structured output folder.
+  Invoke when asked to capture, clone, reference, or reverse-engineer a site's
+  design. Do NOT use for code generation, content extraction, or SEO tasks.
+argument-hint: "[url] [--output ./refs/name]"
+license: MIT
 ---
 
 # design-extractor: 1:1 Website Reference Capture
@@ -142,7 +150,7 @@ Write a single markdown file per site. Sections, in order:
 # Reference: <site> by <owner>
 
 1. DESIGN READ        one tagline: what the design actually is
-2. DESIGN SYSTEM      tokens -- use live/tokens.json for resolved values, cross-ref with source CSS vars
+2. DESIGN SYSTEM      tokens: use live/tokens.json for resolved values, cross-ref with source CSS vars
 3. COMPONENTS         name -> real markup/CSS -> behavior (states, hover, motion)
 4. LAYOUT MAP         section-by-section anatomy + breakpoint behavior
 5. ANIMATIONS         trigger -> effect -> easing -> timing; check animation-libs.json for lib names

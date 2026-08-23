@@ -1,0 +1,15 @@
+{
+  "name": "design-extractor",
+  "version": "0.1.0",
+  "description": "Capture 1:1 website design references for AI agents.",
+  "author": { "name": "alfar1zi", "url": "https://github.com/alfar1zi" },
+  "hooks": {
+    "on_mention": "node ./scripts/cli.mjs",
+    "commands": {
+      "design-extractor": "node ./scripts/cli.mjs",
+      "design-find": "node ./scripts/find-refs.mjs",
+      "design-save": "node ./scripts/saveweb2zip.mjs",
+      "design-inspect": "node ./scripts/inspect.mjs"
+    }
+  }
+}
