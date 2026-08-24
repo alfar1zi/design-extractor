@@ -1,6 +1,6 @@
 # examples
 
-Real end-to-end runs of `npx design-extractor <url> --out ./refs/<name>`. The `.log` files are the full terminal output and prove the skill works on real production sites of different sizes.
+Real end-to-end runs of `node scripts/cli.mjs <url> --out ./refs/<name>` (run from clone; not yet published to npm). The `.log` files are the full terminal output and prove the skill works on real production sites of different sizes.
 
 ## The three legacy sites (captured 2026-08-22, design-extractor v0.1)
 
@@ -51,12 +51,12 @@ The interaction pass no longer fails wholesale, but the following are still true
 
 ## How to reproduce
 
-Run these commands after completing the install steps in the root `README.md`:
+Run these commands after completing the install steps in the root `README.md` (Note: Not yet published to npm. Run from clone via `node` instead of `npx`):
 
 ```bash
-npx design-extractor https://itomdev.com  --out ./refs/itomdev
-npx design-extractor https://linear.app   --out ./refs/linear
-npx design-extractor https://stripe.com   --out ./refs/stripe
+node scripts/cli.mjs https://itomdev.com  --out ./refs/itomdev
+node scripts/cli.mjs https://linear.app   --out ./refs/linear
+node scripts/cli.mjs https://stripe.com   --out ./refs/stripe
 ```
 
 Each run writes `site/`, `live/`, and `REFERENCE.md` into the target directory. The zip files are deleted after extraction.
