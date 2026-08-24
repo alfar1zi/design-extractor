@@ -1,12 +1,8 @@
 # examples
 
-Three real end-to-end runs, captured 2026-08-22.
+Real end-to-end runs of `npx design-extractor <url> --out ./refs/<name>`. The `.log` files are the full terminal output and prove the skill works on real production sites of different sizes.
 
-These `.log` files are the full terminal output of `npx design-extractor <url> --out ./refs/<name>` runs. They prove the skill works end-to-end on real production sites of different sizes.
-
-All three runs were captured on the same day using design-extractor v0.1.
-
-## The three sites
+## The three legacy sites (captured 2026-08-22, design-extractor v0.1)
 
 | site | category | why useful as a reference |
 | --- | --- | --- |
@@ -14,7 +10,7 @@ All three runs were captured on the same day using design-extractor v0.1.
 | linear.app | SaaS product marketing | long scroll page, heavy JS, animation-driven hero, well-structured component tree |
 | stripe.com | enterprise SaaS marketing | massive asset set, multiple section patterns, complex layout at every breakpoint |
 
-## Results summary
+## Results summary (legacy, pre-P1-4)
 
 All numbers from the log files. None estimated.
 
@@ -26,32 +22,32 @@ All numbers from the log files. None estimated.
 
 "source files" = files extracted from the saveweb2zip download into `site/site/`.
 "live artifacts" = files written by the Playwright inspect pass into `live/`.
-"interactions (errored)" = clickables found in the a11y tree, how many errored during the click pass.
+"interactions (errored)" = clickables found in the a11y tree, how many errored during the click pass. These pre-P1-4 numbers all show 100% error rate under the now-removed `[role="..."]` filtered-by-text selector strategy.
 
-## What each run produced
+## Current run (post-P1-4)
 
-**itomdev.com.** Small site: 11 source files, 1451 KB zip. The downloaded source contains a single `index.html`, a handful of CSS files, a few images, and no bundled JS framework (static HTML with minimal scripting). The live capture ran at 1440x900, took 1 scroll screenshot (the page fits in one viewport), found 34 interactive elements in the a11y tree, and swept tablet and mobile. Live artifacts: 79 files total, including the full-page screenshot, accessibility tree, post-hydration DOM, network log, and console log.
+| log | site | clickables | hovers | errored | notes |
+| --- | --- | ---: | ---: | ---: | --- |
+| `examples/example-test.log` | example.com | 1 | 1 | 0 | most recent, smallest site, baseline |
+| `examples/linear-v4.log` | linear.app | 20 | - | 5 | re-captured after Locator API migration; 15/20 succeeded |
 
-**linear.app.** Mid-size site: 112 source files, 5860 KB zip. The downloaded source includes a Next.js static export shell with bundled CSS and chunked JS. The live capture scrolled through 14 positions and took a screenshot at each, confirming a long animated marketing page. 50 clickable elements found (the cap). Sweep produced tablet and mobile full-page screenshots. Live artifacts: 124 files: the scroll pass alone produces 14 screenshots.
+The current interaction pass uses the Playwright Locator API (`page.locator(INTERACTION_SEL).nth(i)`) so the selector is re-resolved on each action and cannot drift into a stale handle. Before the click loop starts, `dismissOverlays()` clicks common cookie/consent banners so they do not intercept later clicks. Failures are no longer a single "error" string; each entry in `interactions.json` carries a `result` field with one of:
 
-**stripe.com.** Large site: 288 source files, 61463 KB zip (61 MB). The saveweb2zip API required two poll cycles before `isFinished` (visible in the log: `copied=288 finished=false` then `finished=true`). The downloaded source is a full asset tree: HTML, CSS, JS chunks, images, and fonts across multiple directories. The live capture scrolled 20 positions, the longest scroll pass of the three runs, producing 20 scroll screenshots plus the full-page and viewport shots. 50 clickables found (the 50-element cap was hit immediately; the real interactive count is higher). Sweep produced tablet and mobile full-page screenshots. Live artifacts: 130 files.
+- `ok` — click landed, navigation recorded.
+- `timeout` — click action did not become actionable within the configured timeout (8s). Likely SPA hydration delay.
+- `not-found` — the locator resolved to zero elements at click time (rare under the new API; usually means the page re-rendered between probe and click).
+- `intercepted` — another element was on top of the target (sticky header, modal backdrop, consent overlay that the dismiss pass missed).
+- `error` — anything else (network, navigation, unexpected Playwright exception).
 
-## Honest limitations
+`interactions.json` and `hover.json` both use this schema.
 
-The interaction pass (which clicks each interactive element, takes a before/after screenshot, and records the DOM diff) **errored on every element in all three runs** (34/34, 50/50, 50/50). The run does not abort; errors are captured in `live/interactions.json` per element. The cause is fragile selector synthesis in v0.1: the locator is built from `[role="..."]` filtered by text content, which fails on production sites that use shadow DOM, custom elements, or aria roles that differ between the serialized a11y tree and the live DOM.
+## Honest limitations that remain
 
-What works in v0.1:
-- Source download (saveweb2zip)
-- Full-page and viewport screenshots
-- Scroll-through screenshot pass
-- Tablet + mobile viewport sweep
-- Accessibility tree dump
-- Post-hydration DOM capture
-- Network request log
-- Console message log
-- REFERENCE.md stub generation
+The interaction pass no longer fails wholesale, but the following are still true post-P1-4:
 
-The interaction click pass is tracked and will be fixed in v0.2 (see the `interactionPass` function in `scripts/inspect.mjs`).
+- **SPA hydration timing** can still produce `timeout` results. The current cap is 8 seconds per click; long-hydrating SPAs may need a future `--hydration-timeout` flag.
+- **Shadow-DOM widgets** with custom elements that do not expose an `a[href]`, `button`, `[role="button"]`, `input[type="submit"]`, or `[tabindex="0"]` are not in `INTERACTION_SEL` and never get clicked. Add new selectors there to extend coverage.
+- **Sweep viewports are fixed** at 1440x900, 768x1024, and 375x812. Custom viewport lists are not yet a CLI flag.
 
 ## How to reproduce
 
@@ -76,6 +72,8 @@ Start with the source, then layer on the live signals:
 5. `live/network.json`: fonts loaded, CDN assets, lazy-loaded images (cross-ref with source asset list)
 6. `live/screenshots/scroll-*.png`: section-by-section rendered output in sequence
 7. `live/screenshots/tablet.png`, `live/screenshots/mobile.png`: breakpoint behavior
-8. `REFERENCE.md`: fill in each section using the above artifacts
+8. `live/interactions.json`: per-element click result + `result` category. Skip entries where `result != "ok"` when counting what the user can actually click.
+9. `live/hover.json`: per-element hover transition timing from `getComputedStyle(el).transitionDuration`.
+10. `REFERENCE.md`: fill in each section using the above artifacts
 
 The `site/` and `live/` directories are not committed to the repo (they are in `.gitignore`). Only the `.log` files ship here as proof of the run. To get the full artifact folders for a given site, run the reproduction commands above.

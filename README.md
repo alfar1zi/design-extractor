@@ -95,7 +95,8 @@ Drop template marketplaces and aggregators. Pick one URL, then run the capture.
 === inspect ===
 [inspect] Viewport: 1440x900  timeout: 30s
 [inspect] Scroll pass: 14 screenshots
-[inspect] Interaction pass: 50 clickables (50 errored)
+[inspect] Interaction pass: 20 clickables (5 errored)
+[inspect] Hover pass: 20 hovers (3 errored)
 [inspect] Sweep pass: 2 viewports
 [cli] source: 112 files  live: 124 files  total: 237 files
 ```
