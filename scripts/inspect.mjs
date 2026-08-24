@@ -5,6 +5,7 @@
 import { mkdir, writeFile, stat } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { assertSafeUrl } from './url-safety.mjs';
 // scanAnimationLibs split to scan-libs.mjs so this file stays under the AGENTS.md 400-line cap.
 import { scanAnimationLibs } from './scan-libs.mjs';
 export { scanAnimationLibs };
@@ -30,8 +31,8 @@ export function defaultOutDir(url, now = new Date()) {
 export function parseArgs(argv) {
   const out = {
     url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: 30,
-    scroll: true, interactions: true, sweep: true, siteDir: null,
-    recordVideo: false, help: false,
+    scroll: true, interactions: true, hover: true, sweep: true, siteDir: null,
+    recordVideo: false, recordHoverVideo: false, allowPrivate: false, help: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -49,8 +50,11 @@ export function parseArgs(argv) {
       case '--timeout': out.timeout = Number(next()); break;
       case '--no-scroll': out.scroll = false; break;
       case '--no-interactions': out.interactions = false; break;
+      case '--no-hover': out.hover = false; break;
       case '--no-sweep': out.sweep = false; break;
       case '--record-video': out.recordVideo = true; break;
+      case '--record-hover-video': out.recordHoverVideo = true; break;
+      case '--allow-private': out.allowPrivate = true; break;
       case '-h': case '--help': out.help = true; break;
       default: throw new Error(`unknown flag: ${a}`);
     }
@@ -153,11 +157,14 @@ Options:
   --timeout <sec>      networkidle wait (default: 30)
   --no-scroll          skip scroll-through screenshot pass
   --no-interactions    skip clickable interaction pass
+  --no-hover           skip hover pass (transition timing + before/after screenshots)
   --no-sweep           skip tablet+mobile viewport sweep
   --record-video       record scroll pass as webm video (slow, large; off by default)
+  --record-hover-video record hover pass as webm video (one clip per element; large)
+  --allow-private      allow private/loopback URLs (off by default; SSRF guard)
   -h, --help           show this help
 Outputs: screenshots/, a11y-tree.json, a11y-interactive.json, tokens.json, dom.html,
-         network.json, console.json, interactions.json, animation-libs.json, manifest.json
+         network.json, console.json, interactions.json, hover.json, animation-libs.json, manifest.json
 `;
 
 // ---- playwright runtime ----
@@ -265,46 +272,9 @@ async function scrollPass(page, viewport, docHeight, screenshotDir) {
 // stale handle errors from SPA navigation. Re-queries the same selector on every
 // fresh page and picks element N by index, which is stable as long as page loads
 // consistently.
-const INTERACTION_CAP = 20;
-const INTERACTION_SEL = 'a[href], button:not([disabled]), [role="button"]:not([disabled]), input[type="submit"], [tabindex="0"]';
-async function interactionPass(context, url, timeoutSec, screenshotDir) {
-  // First load: discover how many handles exist so we know the cap.
-  const probe = await context.newPage();
-  await probe.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutSec * 1000 });
-  try { await probe.waitForLoadState('networkidle', { timeout: timeoutSec * 1000 }); } catch { /* tolerate */ }
-  const total = await probe.$$eval(INTERACTION_SEL, (els) => els.length);
-  await probe.close();
-
-  const count = Math.min(total, INTERACTION_CAP);
-  const results = [];
-  for (let i = 0; i < count; i++) {
-    // Fresh page for every element: no stale handles, no navigation bleed.
-    const page = await context.newPage();
-    try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutSec * 1000 });
-      try { await page.waitForLoadState('networkidle', { timeout: timeoutSec * 1000 }); } catch { /* tolerate */ }
-      const handles = await page.$$(INTERACTION_SEL);
-      const h = handles[i];
-      const meta = h
-        ? await h.evaluate((el) => ({ tag: el.tagName.toLowerCase(), role: el.getAttribute('role'), name: (el.getAttribute('aria-label') || el.textContent || '').trim().slice(0, 80), href: el.getAttribute('href') })).catch(() => ({ tag: null, role: null, name: '', href: null }))
-        : { tag: null, role: null, name: '', href: null };
-      const beforeShot = join(screenshotDir, `click-${String(i + 1).padStart(2, '0')}-before.png`);
-      try { await page.screenshot({ path: beforeShot }); } catch { /* ignore */ }
-      const urlBefore = page.url();
-      const clickErr = h ? await h.click({ timeout: 3000 }).catch((e) => e) : new Error('handle not found at index');
-      const clickError = clickErr instanceof Error ? clickErr.message.split('\n')[0] : null;
-      if (!clickError) await page.waitForTimeout(800);
-      const afterUrl = page.url();
-      const navigated = afterUrl !== urlBefore;
-      const afterShot = join(screenshotDir, `click-${String(i + 1).padStart(2, '0')}-after.png`);
-      try { await page.screenshot({ path: afterShot }); } catch { /* ignore */ }
-      results.push({ index: i + 1, ...meta, beforeShot, afterShot, navigated, afterUrl, error: clickError });
-    } finally {
-      await page.close(); // close regardless of errors; no goBack needed
-    }
-  }
-  return results;
-}
+// Interaction + hover passes extracted to interaction-pass.mjs to keep inspect.mjs lean.
+import { interactionPass, hoverPass, dismissOverlays, categorizeError, INTERACTION_CAP, INTERACTION_SEL } from './interaction-pass.mjs';
+export { interactionPass, hoverPass, dismissOverlays, categorizeError, INTERACTION_CAP, INTERACTION_SEL };
 
 async function sweepPass(browser, url, timeoutSec, screenshotDir) {
   const out = [];
@@ -331,6 +301,9 @@ async function main() {
   catch (e) { err(e.message); process.exit(2); }
   if (args.help) { process.stdout.write(HELP); return; }
 
+  try { await assertSafeUrl(args.url, { allowPrivate: !!args.allowPrivate }); }
+  catch (e) { err(e.message); process.exit(2); }
+
   const outDir = args.outDir ? resolve(args.outDir) : defaultOutDir(args.url);
   await mkdir(outDir, { recursive: true });
   info(`URL: ${args.url}`);
@@ -340,7 +313,7 @@ async function main() {
   const browser = await launchOrHint();
   // Fix 2: when --record-video, pass recordVideo option so Playwright captures the scroll pass.
   const ctxOptions = { viewport: args.viewport };
-  if (args.recordVideo) {
+  if (args.recordVideo || args.recordHoverVideo) {
     const videoDir = join(outDir, 'videos');
     await mkdir(videoDir, { recursive: true });
     ctxOptions.recordVideo = { dir: videoDir, size: { width: args.viewport.width, height: args.viewport.height } };
@@ -395,6 +368,14 @@ async function main() {
     dim(`Interaction pass: ${interactions.length} clickables (${interactions.filter((i) => i.error).length} errored)`);
   }
 
+  let hovers = [];
+  if (args.hover) {
+    hovers = await hoverPass(context, args.url, args.timeout, screenshotDir);
+    await writeFile(join(outDir, 'hover.json'), JSON.stringify(hovers, null, 2));
+    artifacts.push(await fileMeta(join(outDir, 'hover.json')));
+    dim(`Hover pass: ${hovers.length} hovers (${hovers.filter((h) => h.error).length} errored)`);
+  }
+
   if (args.sweep) {
     const sweep = await sweepPass(browser, args.url, args.timeout, screenshotDir);
     for (const s of sweep) artifacts.push(await fileMeta(s.file));
@@ -415,6 +396,7 @@ async function main() {
     timeout: args.timeout, timestamp: new Date().toISOString(),
     docHeight, artifactCount: artifacts.length, artifacts,
     videoPath: args.recordVideo ? join(outDir, 'videos', 'scroll.webm') : null,
+    hoverVideoPath: args.recordHoverVideo ? join(outDir, 'videos', 'hover.webm') : null,
   };
   await writeFile(join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   ok(`OK: ${outDir} (${artifacts.length} artifacts)`);
