@@ -6,6 +6,9 @@ export const INTERACTION_CAP = 20;
 export const INTERACTION_SEL = 'a[href], button:not([disabled]), [role="button"]:not([disabled]), input[type="submit"], [tabindex="0"]';
 const CLICK_TIMEOUT_MS = 8000;
 const HOVER_FALLBACK_MS = 800;
+// Cap the per-element page load well below the inspect --timeout default (30s) so 20 elements
+// do not blow past 5 minutes on slow SPAs.
+const PER_PAGE_GOTO_MS = 15000;
 
 // Map Playwright error messages to a short result category for interactions.json / hover.json.
 // Returns one of: 'ok', 'timeout', 'not-found', 'intercepted', 'error'.
@@ -52,10 +55,11 @@ export async function dismissOverlays(page, dispatch) {
   }
 }
 
-async function probeCount(context, url, timeoutSec) {
+async function probeCount(context, url) {
   const probe = await context.newPage();
-  await probe.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutSec * 1000 });
-  try { await probe.waitForLoadState('networkidle', { timeout: timeoutSec * 1000 }); } catch { /* tolerate */ }
+  await probe.goto(url, { waitUntil: 'domcontentloaded', timeout: PER_PAGE_GOTO_MS });
+  // SPA hydration wait; replaces networkidle which hangs on long-poll pages.
+  await probe.waitForTimeout(800);
   const total = await probe.locator(INTERACTION_SEL).count();
   await probe.close();
   return total;
@@ -64,14 +68,15 @@ async function probeCount(context, url, timeoutSec) {
 // Fresh page per element + Locator API (re-resolves on each action, no stale handles).
 // Cookie/consent overlays are dismissed before clicking so they do not intercept.
 export async function interactionPass(context, url, timeoutSec, screenshotDir) {
-  const total = await probeCount(context, url, timeoutSec);
+  const total = await probeCount(context, url);
   const count = Math.min(total, INTERACTION_CAP);
   const results = [];
   for (let i = 0; i < count; i++) {
     const page = await context.newPage();
     try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutSec * 1000 });
-      try { await page.waitForLoadState('networkidle', { timeout: timeoutSec * 1000 }); } catch { /* tolerate */ }
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: PER_PAGE_GOTO_MS });
+      // SPA hydration wait; replaces networkidle which hangs on long-poll pages.
+      await page.waitForTimeout(800);
       await dismissOverlays(page);
 
       const loc = page.locator(INTERACTION_SEL).nth(i);
@@ -112,14 +117,15 @@ export async function interactionPass(context, url, timeoutSec, screenshotDir) {
 // Fresh page per element. Hovers each clickable, waits for its CSS transition
 // to complete (read from getComputedStyle), then screenshots before/after.
 export async function hoverPass(context, url, timeoutSec, screenshotDir) {
-  const total = await probeCount(context, url, timeoutSec);
+  const total = await probeCount(context, url);
   const count = Math.min(total, INTERACTION_CAP);
   const results = [];
   for (let i = 0; i < count; i++) {
     const page = await context.newPage();
     try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutSec * 1000 });
-      try { await page.waitForLoadState('networkidle', { timeout: timeoutSec * 1000 }); } catch { /* tolerate */ }
+      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: PER_PAGE_GOTO_MS });
+      // SPA hydration wait; replaces networkidle which hangs on long-poll pages.
+      await page.waitForTimeout(800);
       await dismissOverlays(page);
 
       const loc = page.locator(INTERACTION_SEL).nth(i);

@@ -154,7 +154,7 @@ Options:
   --out <DIR>          output directory (default: ./inspect_<host>_<YYYYMMDD_HHmmss>)
   --site-dir <PATH>    site source dir; if given, scans for animation libs
   --viewport WxH       primary viewport (default: 1440x900)
-  --timeout <sec>      networkidle wait (default: 30)
+  --timeout <sec>      page goto timeout, then 1.5s hydration wait (default: 30)
   --no-scroll          skip scroll-through screenshot pass
   --no-interactions    skip clickable interaction pass
   --no-hover           skip hover pass (transition timing + before/after screenshots)
@@ -198,7 +198,9 @@ async function recordPass(context, url, viewport, timeoutSec, outDir) {
   page.on('pageerror', (e) => con.push({ level: 'error', text: `pageerror: ${e.message}`, ts: Date.now() }));
 
   await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutSec * 1000 });
-  try { await page.waitForLoadState('networkidle', { timeout: timeoutSec * 1000 }); } catch { /* tolerate */ }
+  // SPAs often keep long-poll / websocket connections open so networkidle never fires.
+  // Wait briefly for hydration instead.
+  await page.waitForTimeout(1500);
 
   const screenshotDir = join(outDir, 'screenshots');
   await mkdir(screenshotDir, { recursive: true });
@@ -283,7 +285,8 @@ async function sweepPass(browser, url, timeoutSec, screenshotDir) {
     const page = await ctx.newPage();
     try {
       await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutSec * 1000 });
-      try { await page.waitForLoadState('networkidle', { timeout: timeoutSec * 1000 }); } catch { /* ignore */ }
+      // SPA hydration wait (replaces networkidle which never fires on long-poll pages).
+      await page.waitForTimeout(1500);
       const p = join(screenshotDir, `${label}.png`);
       await page.screenshot({ path: p, fullPage: true });
       out.push({ viewport: label, ...vp, file: p });

@@ -159,7 +159,7 @@ Options:
   <url>                 target site URL (positional, required)
   --out <DIR>           output directory (default: ./ref_<host>_<YYYYMMDD_HHmmss>)
   --viewport WxH        viewport for inspect (default: 1440x900)
-  --timeout <sec>       networkidle wait for inspect (default: 30)
+  --timeout <sec>       page goto timeout for inspect (default: 30)
   --no-scroll           skip scroll screenshot pass
   --no-interactions     skip clickable interaction pass
   --no-sweep            skip tablet+mobile viewport sweep
