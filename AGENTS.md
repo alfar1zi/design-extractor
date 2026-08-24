@@ -48,7 +48,7 @@ A one-shot installer also exists: `install.sh` (macOS/Linux) and `install.ps1` (
 design-extractor/
   package.json          bins, deps, scripts
   README.md             quick start and reference for humans
-  SKILL.md              agent frontmatter and skill spec for runtimes
+  skills/design-extractor/SKILL.md   agent frontmatter and skill spec for runtimes
   AGENTS.md             this file, contributor conventions
   LICENSE               MIT
   install.sh            one-shot installer, macOS/Linux
@@ -72,7 +72,7 @@ Generated directories (`refs/`, `out/`, `.cache/`, `playwright-report/`, `node_m
 - Add a bin entry under `package.json` `bin`.
 - Export pure helpers (arg parser, URL parser, validators) so tests can import them without side effects.
 - Write one smoke test in `scripts/__tests__/<name>.test.mjs`.
-- Update README and `SKILL.md` flag tables if the flags are user-facing.
+- Update README and `skills/design-extractor/SKILL.md` flag tables if the flags are user-facing.
 - Keep the file under 400 lines. If it grows past that, split helpers into a sibling module.
 
 ---

@@ -43,18 +43,18 @@ Run the installation script `install.sh`. The command is registered globally to 
 
 #### Cursor
 
-Add the path to `SKILL.md` to your Cursor Rules (`.cursorrules`). The agent reads it on demand when design tasks are requested.
+Add the path to `skills/design-extractor/SKILL.md` to your Cursor Rules (`.cursorrules`). The agent reads it on demand when design tasks are requested.
 
 ## Pipeline
 
 | Slash Command | What it does | Output artifact |
 | --- | --- | --- |
-| /design-find | Query the web for candidate URLs matching a design prompt | list of URLs to stdout |
-| /design-save | Download full site via saveweb2zip: HTML, CSS, JS, images, fonts | `site/` folder |
-| /design-inspect | Drive Playwright: scroll, interactions, viewport sweep, token dump | `live/` folder |
-| /design-merge | Write one reference doc: tokens, components, layout, animations, assets | `REFERENCE.md` |
+| /design-extractor-find | Query the web for candidate URLs matching a design prompt | list of URLs to stdout |
+| /design-extractor-save | Download full site via saveweb2zip: HTML, CSS, JS, images, fonts | `site/` folder |
+| /design-extractor-inspect | Drive Playwright: scroll, interactions, viewport sweep, token dump | `live/` folder |
+| /design-extractor | Run the full extraction pipeline (including layout/token merge) | `REFERENCE.md` |
 
-Skip `/design-find` if you have a URL. Skip `/design-save` if you only need live screenshots. `/design-merge` runs automatically as the final phase of `/design-extractor`.
+Skip `/design-extractor-find` if you have a URL. Skip `/design-extractor-save` if you only need live screenshots. `/design-extractor` merges all artifacts at the end.
 
 Once installed, trigger the capture directly inside your agent chat:
 ```bash
@@ -62,19 +62,19 @@ Once installed, trigger the capture directly inside your agent chat:
 ```
 
 <details>
-<summary>CLI Fallbacks (npx)</summary>
+<summary>CLI Fallbacks (local)</summary>
 
-Save and inspect separately:
+Save and inspect separately (Note: Not yet published to npm. Run from clone with `node scripts/<name>.mjs`):
 ```bash
-npx design-save https://linear.app --out ./refs/linear --rename-assets
-npx design-inspect https://linear.app --out ./refs/linear/live --viewport 1440x900
+node scripts/saveweb2zip.mjs --url https://linear.app --out ./refs/linear --rename-assets
+node scripts/inspect.mjs --url https://linear.app --out ./refs/linear/live --viewport 1440x900
 ```
 
 Add `--record-video` to capture the scroll pass as `.webm`. Add `--site-dir` to scan JS for animation libs.
 
 Discover candidates first:
 ```bash
-npx design-find --prompt "premium saas landing dark theme" --count 5
+node scripts/find-refs.mjs --prompt "premium saas landing dark theme" --count 5
 ```
 
 Drop template marketplaces and aggregators. Pick one URL, then run the capture.
