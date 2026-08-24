@@ -82,17 +82,9 @@ Common flags (mirror the source site's options):
 | `--mobile-version` | Capture the mobile variant |
 | `--alternative-algorithm` | Simplified static download fallback |
 
-Fallbacks when saveweb2zip errors, rate-limits, or the site blocks the service:
+Automatic fallback. If saveweb2zip retries exhaust, `downloadSiteWithFallback` automatically tries `npx monolith` and then `npx single-file-cli` as best-effort fallbacks. Both require network access to the npm registry at runtime and a working `npx`; they may not be available in every sandbox. The skill exits with an error only after all three paths fail.
 
-```bash
-# monolith: one page to one standalone HTML with assets inlined
-npx monolith https://target.example -o page.html
-
-# single-file-cli: headless Chromium renders JS into one HTML file
-npx single-file-cli https://target.example --output-dir ./refs/target
-```
-
-Extract the zip into `./refs/target/site/` and keep the folder. This folder IS the reference artifact — never delete it mid-analysis.
+Extract the output/zip into `./refs/target/site/` and keep the folder. This folder IS the reference artifact — never delete it mid-analysis.
 
 ---
 
