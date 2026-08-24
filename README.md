@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="../../actions/workflows/ci.yml"><img src="../../actions/workflows/ci.yml/badge.svg" alt="ci"></a>
   <a href="."><img src="https://img.shields.io/badge/node-%E2%89%A518-339933" alt="node >=18"></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license MIT"></a>
   <a href="."><img src="https://img.shields.io/badge/slash--command-%2Fdesign--extractor-7170ff" alt="slash command: /design-extractor"></a>
