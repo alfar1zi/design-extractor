@@ -5,6 +5,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, writeFile, readdir, stat } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { assertSafeUrl } from './url-safety.mjs';
 
 const DEFAULT_VIEWPORT = '1440x900';
 const DEFAULT_TIMEOUT = 30;
@@ -12,7 +13,7 @@ const DEFAULT_TIMEOUT = 30;
 // ---- pure helpers (exported for tests) ----
 
 export function parseArgs(argv) {
-  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, sweep: true, skipSave: false, skipInspect: false, help: false };
+  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, sweep: true, skipSave: false, skipInspect: false, allowPrivate: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -25,6 +26,7 @@ export function parseArgs(argv) {
       case '--no-sweep': out.sweep = false; break;
       case '--skip-save': out.skipSave = true; break;
       case '--skip-inspect': out.skipInspect = true; break;
+      case '--allow-private': out.allowPrivate = true; break;
       case '-h': case '--help': out.help = true; break;
       default:
         if (out.url) throw new Error(`unknown flag: ${a}`);
@@ -33,21 +35,29 @@ export function parseArgs(argv) {
   }
   if (out.help) return out;
   if (!out.url) throw new Error('url is required (positional)');
-  validateUrl(out.url);
+  // Syntax + SSRF validation happens in main() via validateUrl/assertSafeUrl
+  // so parseArgs stays sync and tests can import validateUrl directly.
   if (!/^\d+x\d+$/.test(out.viewport)) throw new Error('--viewport must be WxH, e.g. 1440x900');
   if (!Number.isFinite(out.timeout) || out.timeout <= 0) throw new Error('--timeout must be a positive number');
   return out;
 }
 
-export function validateUrl(s) {
-  try { new URL(s); return true; }
-  catch { throw new Error(`invalid URL: ${s}`); }
+// Validate URL: syntax check + SSRF guard. Throws on bad URL or unsafe target.
+// Defaults allowPrivate=false; pass allowPrivate=true to permit loopback/private IPs.
+export async function validateUrl(rawUrl, opts = {}) {
+  const { allowPrivate = false, resolver } = opts;
+  const args = { allowPrivate };
+  if (resolver) args.resolver = resolver;
+  await assertSafeUrl(rawUrl, args);
+  return true;
 }
 
 export function buildChildArgs(opts) {
   const args = [];
   if (!opts.skipSave) {
-    args.push(['save', ['--url', opts.url, '--out', join(opts.out, 'site')]]);
+    const saveArgs = ['--url', opts.url, '--out', join(opts.out, 'site')];
+    if (opts.allowPrivate) saveArgs.push('--allow-private');
+    args.push(['save', saveArgs]);
   }
   if (!opts.skipInspect) {
     const inspect = ['--url', opts.url, '--out', join(opts.out, 'live'), '--viewport', opts.viewport, '--timeout', String(opts.timeout)];
@@ -56,6 +66,7 @@ export function buildChildArgs(opts) {
     if (!opts.scroll) inspect.push('--no-scroll');
     if (!opts.interactions) inspect.push('--no-interactions');
     if (!opts.sweep) inspect.push('--no-sweep');
+    if (opts.allowPrivate) inspect.push('--allow-private');
     args.push(['inspect', inspect]);
   }
   return args;
@@ -154,6 +165,7 @@ Options:
   --no-sweep            skip tablet+mobile viewport sweep
   --skip-save           skip source download step
   --skip-inspect        skip browser inspect step
+  --allow-private       allow private/loopback URLs (off by default; SSRF guard)
   -h, --help            show this help
 
 Steps: save -> inspect -> REFERENCE.md
@@ -165,6 +177,9 @@ async function main() {
   try { args = parseArgs(process.argv.slice(2)); }
   catch (e) { err(e.message); process.exit(2); }
   if (args.help) { process.stdout.write(HELP); return; }
+
+  try { await validateUrl(args.url, { allowPrivate: !!args.allowPrivate }); }
+  catch (e) { err(e.message); process.exit(2); }
 
   const outDir = args.outDir ? resolve(args.outDir) : defaultOutDir(args.url);
   await mkdir(outDir, { recursive: true });

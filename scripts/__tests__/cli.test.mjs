@@ -50,12 +50,12 @@ test('parseArgs --help short-circuits validation', () => {
   assert.equal(a.url, null);
 });
 
-test('validateUrl accepts valid', () => {
-  assert.equal(validateUrl('https://x.com'), true);
+test('validateUrl accepts valid', async () => {
+  assert.equal(await validateUrl('https://x.com', { resolver: () => Promise.resolve([{ address: '1.1.1.1' }]) }), true);
 });
 
-test('validateUrl throws on junk', () => {
-  assert.throws(() => validateUrl('not a url'), /invalid URL/);
+test('validateUrl throws on junk', async () => {
+  await assert.rejects(validateUrl('not a url'), /invalid URL/);
 });
 
 test('buildChildArgs runs save and inspect by default', () => {
