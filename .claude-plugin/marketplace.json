@@ -9,7 +9,6 @@
     "description": "Capture 1:1 website design references (source code, computed CSS tokens, post-hydration DOM, interactive flows, and scroll videos) for AI agents.",
     "keywords": ["design", "playwright", "screenshot", "css-tokens"],
     "source": "./",
-    "strict": false,
     "version": "0.1.0"
   }]
 }
