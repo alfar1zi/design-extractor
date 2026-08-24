@@ -14,7 +14,9 @@
   },
   "scripts": {
     "install:browsers": "playwright install chromium",
-    "test": "node --test scripts/__tests__"
+    "test": "node scripts/run-tests.mjs",
+    "validate": "node scripts/validate-plugin.mjs",
+    "validate:plugin": "node scripts/validate-plugin.mjs"
   },
   "dependencies": {
     "playwright": "^1.48.0",

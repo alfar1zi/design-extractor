@@ -6,8 +6,10 @@
 
 import { mkdir, writeFile, rm, readdir } from 'node:fs/promises';
 import { createWriteStream, mkdirSync } from 'node:fs';
+import { spawn } from 'node:child_process';
 import { resolve, join, sep, posix, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { assertSafeUrl } from './url-safety.mjs';
 
 const API = 'https://copier.saveweb2zip.com';
 const REFERER = 'https://saveweb2zip.com/en';
@@ -22,7 +24,7 @@ export function defaultOutDir(now = new Date()) {
 }
 
 export function parseArgs(argv) {
-  const out = { url: null, outDir: null, renameAssets: false, saveStructure: false, alternativeAlgorithm: false, mobileVersion: false, timeoutSec: 300, json: null, help: false };
+  const out = { url: null, outDir: null, renameAssets: false, saveStructure: false, alternativeAlgorithm: false, mobileVersion: false, timeoutSec: 300, json: null, allowPrivate: false, help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -35,6 +37,7 @@ export function parseArgs(argv) {
       case '--mobile-version': out.mobileVersion = true; break;
       case '--timeout': out.timeoutSec = Number(next()); break;
       case '--json': out.json = next(); break;
+      case '--allow-private': out.allowPrivate = true; break;
       case '-h': case '--help': out.help = true; break;
       default: throw new Error(`unknown flag: ${a}`);
     }
@@ -90,6 +93,7 @@ Options:
   --mobile-version         capture mobile variant
   --timeout <sec>          poll timeout in seconds (default: 300)
   --json <file>            write manifest JSON to file
+  --allow-private          allow private/loopback URLs (off by default; SSRF guard)
   -h, --help               show this help
 `;
 
@@ -131,6 +135,89 @@ async function downloadArchive(md5, dest) {
   return buf.length;
 }
 
+// Pure retry helper. Attempts: 3 with 500ms/1s/2s backoff. Override via opts.delays.
+export async function withRetry(fn, opts = {}) {
+  const delays = opts.delays || [500, 1000, 2000];
+  const sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  let lastErr;
+  for (let attempt = 0; attempt < delays.length; attempt++) {
+    try { return await fn(attempt); }
+    catch (e) {
+      lastErr = e;
+      if (attempt < delays.length - 1) await sleep(delays[attempt]);
+    }
+  }
+  throw lastErr;
+}
+
+// Fallback: monolith (single-page static) or single-file-cli (headless Chromium).
+// Spawns the CLI, captures stdout/stderr, returns the output file path.
+export async function runFallbackCli(cmd, args, outFile, { timeoutMs = 120000 } = {}) {
+  await new Promise((resolveP, rejectP) => {
+    const child = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] });
+    let stdout = '';
+    let stderr = '';
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      rejectP(new Error(`${cmd} timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+    child.stdout.on('data', (b) => { stdout += b.toString(); });
+    child.stderr.on('data', (b) => { stderr += b.toString(); });
+    child.on('error', (e) => { clearTimeout(timer); rejectP(new Error(`${cmd} spawn failed: ${e.message}`)); });
+    child.on('close', (code) => {
+      clearTimeout(timer);
+      if (code !== 0) return rejectP(new Error(`${cmd} exited ${code}: ${stderr.slice(0, 200)}`));
+      resolveP({ stdout, stderr });
+    });
+  });
+  return outFile;
+}
+
+// Orchestrates the full save flow: saveweb2zip with retry, fallback to monolith/single-file-cli
+// if saveweb2zip fails. Returns { backend, outFile, ... }.
+export async function downloadSiteWithFallback(url, outDir, opts = {}) {
+  await assertSafeUrl(url, { allowPrivate: !!opts.allowPrivate });
+  const sleep = opts.sleep;
+  const archiveDir = opts.archiveDir || join(outDir, 'site');
+  await mkdir(archiveDir, { recursive: true });
+
+  let lastErr = null;
+  try {
+    const md5 = await withRetry(() => copySite(url, opts), { sleep });
+    const status = await withRetry(() => pollStatus(md5, opts.timeoutSec || 300), { sleep });
+    if (status.success === false) throw new Error(`saveweb2zip reported failure: ${status.error || 'unknown'}`);
+    const zipPath = join(outDir, `site_${md5}.zip`);
+    const zipSize = await withRetry(() => downloadArchive(md5, zipPath), { sleep });
+    return { backend: 'saveweb2zip', zipPath, zipSize };
+  } catch (e) {
+    lastErr = e;
+    err(`saveweb2zip failed after retries: ${e.message}`);
+  }
+
+  // Fallback 1: monolith
+  if (opts.allowFallback !== false) {
+    try {
+      const out = join(archiveDir, 'monolith.html');
+      await runFallbackCli('npx', ['--yes', 'monolith', url, '-o', out], out);
+      info(`fallback OK: monolith -> ${out}`);
+      return { backend: 'monolith', outFile: out };
+    } catch (e) {
+      err(`monolith fallback failed: ${e.message}`);
+    }
+    // Fallback 2: single-file-cli
+    try {
+      const out = join(archiveDir, 'single-file.html');
+      await runFallbackCli('npx', ['--yes', 'single-file-cli', url, '--output-file', out], out);
+      info(`fallback OK: single-file-cli -> ${out}`);
+      return { backend: 'single-file-cli', outFile: out };
+    } catch (e) {
+      err(`single-file-cli fallback failed: ${e.message}`);
+    }
+  }
+
+  throw lastErr || new Error('all backends failed');
+}
+
 // ---- zip extract ----
 function extractZip(zipPath, outDir) {
   return new Promise(async (resolveP, rejectP) => {
@@ -164,33 +251,40 @@ async function main() {
   const args = await exit(2, parseArgs, process.argv.slice(2));
   if (args.help) { process.stdout.write(HELP); return; }
 
+  try { await assertSafeUrl(args.url, { allowPrivate: !!args.allowPrivate }); }
+  catch (e) { err(e.message); process.exit(2); }
+
   const outDir = args.outDir ? resolve(args.outDir) : defaultOutDir();
   await mkdir(outDir, { recursive: true });
   info(`Submitting: ${args.url}`);
   dim(`OutDir: ${outDir}`);
 
-  const md5 = await exit(1, (u) => copySite(u, args), args.url);
-  dim(`Job: ${md5}`);
-
-  const status = await exit(1, pollStatus, md5, args.timeoutSec);
-  if (status.success === false) { err(`Copy failed: ${status.error || 'unknown'}`); process.exit(1); }
-
-  const zipPath = join(outDir, `site_${md5}.zip`);
-  const zipSize = await exit(1, downloadArchive, md5, zipPath);
-  ok(`OK: ${zipPath} (${(zipSize / 1024).toFixed(1)} KB)`);
-
-  const siteDir = join(outDir, 'site');
-  await mkdir(siteDir, { recursive: true });
-  const count = await exit(1, extractZip, zipPath, siteDir);
-  await rm(zipPath, { force: true });
-
-  const entry = await findFirstHtml(siteDir);
-  ok(`Extracted: ${count} files -> ${siteDir}`);
-  if (entry) dim(`Entry: ${entry}`);
-
-  if (args.json) {
-    await writeFile(args.json, JSON.stringify({ url: args.url, md5, outDir, zipSize, fileCount: count, entry }, null, 2));
-    dim(`Manifest: ${args.json}`);
+  try {
+    const result = await downloadSiteWithFallback(args.url, outDir, { ...args });
+    if (result.backend === 'saveweb2zip') {
+      const { zipPath, zipSize } = result;
+      ok(`OK: ${zipPath} (${(zipSize / 1024).toFixed(1)} KB)`);
+      const siteDir = join(outDir, 'site');
+      await mkdir(siteDir, { recursive: true });
+      const count = await exit(1, extractZip, zipPath, siteDir);
+      await rm(zipPath, { force: true });
+      const entry = await findFirstHtml(siteDir);
+      ok(`Extracted: ${count} files -> ${siteDir}`);
+      if (entry) dim(`Entry: ${entry}`);
+      if (args.json) {
+        await writeFile(args.json, JSON.stringify({ url: args.url, backend: 'saveweb2zip', outDir, zipSize: zipSize, fileCount: count, entry }, null, 2));
+        dim(`Manifest: ${args.json}`);
+      }
+    } else {
+      ok(`OK via fallback: ${result.backend} -> ${result.outFile}`);
+      if (args.json) {
+        await writeFile(args.json, JSON.stringify({ url: args.url, backend: result.backend, outDir, outFile: result.outFile }, null, 2));
+        dim(`Manifest: ${args.json}`);
+      }
+    }
+  } catch (e) {
+    err(e.message);
+    process.exit(1);
   }
 }
 

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseArgs, parseDuckDuckGoHTML, parseBraveJSON, pickBackend } from '../find-refs.mjs';
+import { parseArgs, parseDuckDuckGoHTML, parseBraveJSON, pickBackend, hasDdgMarkers } from '../find-refs.mjs';
 
 test('parseArgs requires --prompt', () => {
   assert.throws(() => parseArgs([]), /--prompt is required/);
@@ -48,6 +48,15 @@ test('parseDuckDuckGoHTML parses a minimal fixture', () => {
 test('parseDuckDuckGoHTML returns [] on empty input', () => {
   assert.deepEqual(parseDuckDuckGoHTML(''), []);
   assert.deepEqual(parseDuckDuckGoHTML(null), []);
+});
+
+test('hasDdgMarkers detects DDG page structure', () => {
+  assert.equal(hasDdgMarkers('<html><input name="q"></html>'), true);
+  assert.equal(hasDdgMarkers('<html>duckduckgo search</html>'), true);
+  assert.equal(hasDdgMarkers('<html><div id="search_form"></div></html>'), true);
+  assert.equal(hasDdgMarkers('<html>random text</html>'), false);
+  assert.equal(hasDdgMarkers(''), false);
+  assert.equal(hasDdgMarkers(null), false);
 });
 
 test('parseBraveJSON handles Brave response shape', () => {

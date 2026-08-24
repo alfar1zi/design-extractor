@@ -55,6 +55,12 @@ const decodeEntities = (s) => s
 // Strip all HTML tags but keep text. Greedy-safe enough for search result fragments.
 const stripTags = (s) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 
+export function hasDdgMarkers(html) {
+  if (!html || typeof html !== 'string') return false;
+  const lower = html.toLowerCase();
+  return lower.includes('<input') || lower.includes('duckduckgo') || lower.includes('search_form') || lower.includes('class="result');
+}
+
 export function parseDuckDuckGoHTML(html) {
   if (!html || typeof html !== 'string') return [];
   const results = [];
@@ -108,7 +114,12 @@ async function searchDuckDuckGo(prompt, count) {
   if (!res.ok) throw new Error(`DuckDuckGo HTTP ${res.status}`);
   const html = await res.text();
   const results = parseDuckDuckGoHTML(html);
-  if (results.length === 0) throw new Error('DuckDuckGo returned 0 results (parser miss or rate-limited)');
+  if (results.length === 0) {
+    if (!hasDdgMarkers(html)) {
+      throw new Error('DuckDuckGo HTML markup changed; parser needs update. Use --backend brave with BRAVE_API_KEY as fallback.');
+    }
+    throw new Error('No results for prompt.');
+  }
   return results.slice(0, count);
 }
 
@@ -172,9 +183,12 @@ async function main() {
       results = await searchDuckDuckGo(args.prompt, args.count);
     }
   } catch (e) {
-    err(`${backend} failed: ${e.message}`);
-    if (backend === 'duckduckgo') dim('hint: set BRAVE_API_KEY and retry with --backend brave, or --backend auto');
-    else if (!process.env.BRAVE_API_KEY) dim('hint: BRAVE_API_KEY not set; --backend auto will fall back to duckduckgo');
+    err(e.message);
+    if (backend === 'duckduckgo' && !e.message.includes('No results')) {
+      dim('hint: set BRAVE_API_KEY and retry with --backend brave, or --backend auto');
+    } else if (backend === 'brave' && !process.env.BRAVE_API_KEY) {
+      dim('hint: BRAVE_API_KEY not set; --backend auto will fall back to duckduckgo');
+    }
     process.exit(1);
   }
 
