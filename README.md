@@ -57,6 +57,8 @@ Add the path to `skills/design-extractor/SKILL.md` to your Cursor Rules (`.curso
 
 Skip `/design-extractor-find` if you have a URL. Skip `/design-extractor-save` if you only need live screenshots. `/design-extractor` merges all artifacts at the end.
 
+**SSRF Protection**: All entry points run a safety check to block local/private IP ranges. Pass `--allow-private` to permit loopback or private targets. Note that `assertSafeUrl` validates at check time only, so DNS rebinding between check and connect is theoretically possible. Pair with egress policy for high-trust environments.
+
 Once installed, trigger the capture directly inside your agent chat:
 ```bash
 /design-extractor https://linear.app --out ./refs/linear

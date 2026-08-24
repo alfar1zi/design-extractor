@@ -41,6 +41,12 @@ function hostnameIsLocalLiteral(hostname) {
   return false;
 }
 
+// Defense-in-depth, not a hard guarantee. Validation happens at check time;
+// the actual Playwright goto happens later, so DNS rebinding is theoretically
+// possible against an attacker who controls the DNS path between the two calls.
+// Closes the common case (literal private/loopback targets in URLs) but is
+// not a TOCTOU-proof SSRF shield. Pair with network policy / egress firewall
+// for high-trust environments.
 export async function assertSafeUrl(rawUrl, opts = {}) {
   const { allowPrivate = false, resolver = dns.lookup } = opts;
   let parsed;

@@ -84,6 +84,8 @@ Common flags (mirror the source site's options):
 
 Automatic fallback. If saveweb2zip retries exhaust, `downloadSiteWithFallback` automatically tries `npx monolith` and then `npx single-file-cli` as best-effort fallbacks. Both require network access to the npm registry at runtime and a working `npx`; they may not be available in every sandbox. The skill exits with an error only after all three paths fail.
 
+**SSRF Protection**: All network paths run a safety check to block local/private IP ranges. Pass `--allow-private` to permit loopback or private targets. Note that `assertSafeUrl` validates at check time only, so DNS rebinding between check and connect is theoretically possible. Pair with egress policy for high-trust environments.
+
 Extract the output/zip into `./refs/target/site/` and keep the folder. This folder IS the reference artifact — never delete it mid-analysis.
 
 ---
