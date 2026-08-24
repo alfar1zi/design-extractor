@@ -4,6 +4,8 @@ node_modules/
 # build / cache
 dist/
 *.log
+# Real evidence logs for proof-of-work (must be tracked)
+!examples/*.log
 .npm/
 .eslintcache
 .DS_Store

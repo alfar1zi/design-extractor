@@ -1,0 +1,6 @@
+﻿[inspect] URL: https://example.com
+[inspect] OutDir: C:\Users\falfa\Projects\github-random\design-extractor\refs\example-test
+[inspect] Viewport: 1440x900  timeout: 30s
+[inspect] Interaction pass: 1 clickables (0 errored)
+[inspect] Hover pass: 1 hovers (0 errored)
+[inspect] OK: C:\Users\falfa\Projects\github-random\design-extractor\refs\example-test (10 artifacts)
