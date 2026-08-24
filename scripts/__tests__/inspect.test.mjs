@@ -4,6 +4,7 @@ import { mkdtemp, writeFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { parseArgs, defaultOutDir, stepScrollPositions, selectClickables, extractInteractiveElements, scanAnimationLibs } from '../inspect.mjs';
+import { categorizeError, dismissOverlays } from '../interaction-pass.mjs';
 
 test('parseArgs requires --url', () => {
   assert.throws(() => parseArgs([]), /--url is required/);
@@ -140,4 +141,41 @@ test('scanAnimationLibs returns all-false for empty dir', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'scan-empty-'));
   const result = await scanAnimationLibs(dir);
   assert.ok(Object.values(result).every((v) => !v.found));
+});
+
+test('categorizeError maps timeout messages to timeout', () => {
+  assert.equal(categorizeError(new Error('Timeout 8000ms exceeded')), 'timeout');
+});
+
+test('categorizeError maps pointer-intercept messages to intercepted', () => {
+  assert.equal(categorizeError(new Error('element intercepts pointer events')), 'intercepted');
+});
+
+test('categorizeError maps not-found messages to not-found', () => {
+  assert.equal(categorizeError(new Error('locator: foo not found')), 'not-found');
+});
+
+test('categorizeError falls back to error for unknown messages', () => {
+  assert.equal(categorizeError(new Error('random')), 'error');
+});
+
+test('categorizeError returns ok for falsy input', () => {
+  assert.equal(categorizeError(null), 'ok');
+  assert.equal(categorizeError(undefined), 'ok');
+});
+
+test('dismissOverlays clicks every visible selector via dispatch', async () => {
+  const clicked = [];
+  const dispatch = async (sel) => ({
+    isVisible: async () => true,
+    click: async () => { clicked.push(sel); },
+  });
+  await dismissOverlays(null, dispatch);
+  assert.ok(clicked.length >= 10, `expected at least 10 selectors clicked, got ${clicked.length}`);
+  assert.ok(clicked.every((s) => s.length > 0));
+});
+
+test('dismissOverlays swallows errors from dispatch without throwing', async () => {
+  const dispatch = async () => { throw new Error('selector not present'); };
+  await dismissOverlays(null, dispatch); // must not throw
 });
