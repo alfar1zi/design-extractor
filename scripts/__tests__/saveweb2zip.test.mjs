@@ -54,7 +54,7 @@ test('safeJoin rejects directory entry with .. inside', () => {
 
 test('withRetry returns the first successful value', async () => {
   let calls = 0;
-  const out = await withRetry(async () => { calls++; return 'ok'; }, { sleep: () => Promise.resolve() });
+  const out = await withRetry(async () => { calls++; return 'ok'; }, 'test', [10, 10]);
   assert.equal(out, 'ok');
   assert.equal(calls, 1);
 });
@@ -62,21 +62,21 @@ test('withRetry returns the first successful value', async () => {
 test('withRetry retries and throws after all attempts', async () => {
   let calls = 0;
   await assert.rejects(
-    withRetry(async () => { calls++; throw new Error('boom'); }, { sleep: () => Promise.resolve() }),
-    /boom/
+    withRetry(async () => { calls++; throw new Error('boom'); }, 'test', [10, 10]),
+    /test failed after 3 attempts: boom/
   );
-  assert.equal(calls, 3, 'expected 3 attempts with default delays');
+  assert.equal(calls, 3, 'expected 3 attempts with 2-delay config');
 });
 
 test('withRetry eventually succeeds on a later attempt', async () => {
   let calls = 0;
   const out = await withRetry(async () => {
     calls++;
-    if (calls < 2) throw new Error('transient');
-    return 'ok-2';
-  }, { sleep: () => Promise.resolve() });
-  assert.equal(out, 'ok-2');
-  assert.equal(calls, 2);
+    if (calls < 3) throw new Error('transient');
+    return 'ok-3';
+  }, 'test', [10, 10]);
+  assert.equal(out, 'ok-3');
+  assert.equal(calls, 3);
 });
 
 test('runFallbackCli rejects when child exits non-zero', async () => {

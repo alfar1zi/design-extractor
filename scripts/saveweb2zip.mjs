@@ -135,19 +135,23 @@ async function downloadArchive(md5, dest) {
   return buf.length;
 }
 
-// Pure retry helper. Attempts: 3 with 500ms/1s/2s backoff. Override via opts.delays.
-export async function withRetry(fn, opts = {}) {
-  const delays = opts.delays || [500, 1000, 2000];
-  const sleep = opts.sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+// Pure retry helper. (delays.length + 1) total attempts with the configured backoff.
+// Throws `<label> failed after N attempts: <cause>` once exhausted.
+const RETRY_DELAYS_MS = [500, 1000, 2000];
+export async function withRetry(fn, label, delays = RETRY_DELAYS_MS) {
   let lastErr;
-  for (let attempt = 0; attempt < delays.length; attempt++) {
-    try { return await fn(attempt); }
-    catch (e) {
+  for (let attempt = 0; attempt <= delays.length; attempt++) {
+    try {
+      return await fn();
+    } catch (e) {
       lastErr = e;
-      if (attempt < delays.length - 1) await sleep(delays[attempt]);
+      if (attempt < delays.length) {
+        await new Promise((r) => setTimeout(r, delays[attempt]));
+      }
     }
   }
-  throw lastErr;
+  const cause = lastErr?.message ?? String(lastErr);
+  throw new Error(`${label} failed after ${delays.length + 1} attempts: ${cause}`);
 }
 
 // Fallback: monolith (single-page static) or single-file-cli (headless Chromium).
@@ -183,11 +187,11 @@ export async function downloadSiteWithFallback(url, outDir, opts = {}) {
 
   let lastErr = null;
   try {
-    const md5 = await withRetry(() => copySite(url, opts), { sleep });
-    const status = await withRetry(() => pollStatus(md5, opts.timeoutSec || 300), { sleep });
+    const md5 = await withRetry(() => copySite(url, opts), 'copySite');
+    const status = await withRetry(() => pollStatus(md5, opts.timeoutSec || 300), 'pollStatus');
     if (status.success === false) throw new Error(`saveweb2zip reported failure: ${status.error || 'unknown'}`);
     const zipPath = join(outDir, `site_${md5}.zip`);
-    const zipSize = await withRetry(() => downloadArchive(md5, zipPath), { sleep });
+    const zipSize = await withRetry(() => downloadArchive(md5, zipPath), 'downloadArchive');
     return { backend: 'saveweb2zip', zipPath, zipSize };
   } catch (e) {
     lastErr = e;
