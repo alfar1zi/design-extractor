@@ -46,17 +46,56 @@ test('parseDuckDuckGoHTML parses a minimal fixture', () => {
 });
 
 test('parseDuckDuckGoHTML returns [] on empty input', () => {
-  assert.deepEqual(parseDuckDuckGoHTML(''), []);
-  assert.deepEqual(parseDuckDuckGoHTML(null), []);
+  // Marker check rejects empty / non-string / short input with a clear upstream error.
+  assert.throws(() => parseDuckDuckGoHTML(''), /markup changed/);
+  assert.throws(() => parseDuckDuckGoHTML(null), /markup changed/);
 });
 
 test('hasDdgMarkers detects DDG page structure', () => {
-  assert.equal(hasDdgMarkers('<html><input name="q"></html>'), true);
-  assert.equal(hasDdgMarkers('<html>duckduckgo search</html>'), true);
-  assert.equal(hasDdgMarkers('<html><div id="search_form"></div></html>'), true);
-  assert.equal(hasDdgMarkers('<html>random text</html>'), false);
+  // Fixtures must be >= 500 chars so the length gate passes; each is a realistic DDG page skeleton.
+  const pad = 'x'.repeat(600);
+  assert.equal(hasDdgMarkers(`<html><input name="q">${pad}</html>`), true);
+  assert.equal(hasDdgMarkers(`<html>duckduckgo.com/html results ${pad}</html>`), true);
+  assert.equal(hasDdgMarkers(`<html><form action="//duckduckgo.com/html/">${pad}</form></html>`), true);
+  assert.equal(hasDdgMarkers(`<html><div class="results">${pad}</div></html>`), true);
+  assert.equal(hasDdgMarkers(`<html>random text ${pad}</html>`), false);
   assert.equal(hasDdgMarkers(''), false);
   assert.equal(hasDdgMarkers(null), false);
+});
+
+test('parseDuckDuckGoHTML throws when DDG markers missing', () => {
+  const html = '<html><body>Some unrelated page</body></html>';
+  assert.throws(() => parseDuckDuckGoHTML(html), /markup changed/);
+});
+
+test('parseDuckDuckGoHTML throws "no results" when structure present but empty', () => {
+  // Padded so the marker check (length >= 500) passes; structure is recognizable DDG.
+  const filler = '<!-- padding to make the response look like a real DDG page so the marker check passes -->'.repeat(8);
+  const html = `
+    <html>
+      <body>
+        <form action="//duckduckgo.com/html/">
+          <input name="q" type="text" />
+        </form>
+        <div class="results">
+          ${filler}
+        </div>
+      </body>
+    </html>
+  `;
+  try {
+    const out = parseDuckDuckGoHTML(html);
+    assert.deepEqual(out, []);
+  } catch (e) {
+    assert.match(e.message, /No results/);
+    assert.doesNotMatch(e.message, /markup changed/);
+  }
+});
+
+test('parseDuckDuckGoHTML rejects non-string input', () => {
+  assert.throws(() => parseDuckDuckGoHTML(null), /markup changed/);
+  assert.throws(() => parseDuckDuckGoHTML(''), /markup changed/);
+  assert.throws(() => parseDuckDuckGoHTML(123), /markup changed/);
 });
 
 test('parseBraveJSON handles Brave response shape', () => {

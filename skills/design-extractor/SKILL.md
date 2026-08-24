@@ -59,6 +59,8 @@ When the user has no specific URL, generate 3 to 5 candidate sites:
 npx design-extractor-find --prompt "premium modern SaaS landing dark theme" --count 5
 ```
 
+**Backend recommendation**: prefer `--backend brave` (or `--backend auto` with `BRAVE_API_KEY` set). The default DuckDuckGo HTML scraper is zero-config but fragile: if its markup changes the parser now throws a distinct "DuckDuckGo HTML markup changed; parser needs update" error so you can tell parser miss apart from a genuine zero-result query. Brave is the reliable production path.
+
 Filter the results: drop template-marketplace spam, drop aggregator pages, keep real product sites and studios. Present the candidates to the user and let them pick one or more. Never auto-commit to the first result. After the user picks, proceed to Step 1 with the chosen URL(s).
 
 ---

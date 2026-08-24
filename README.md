@@ -77,6 +77,8 @@ Discover candidates first:
 node scripts/find-refs.mjs --prompt "premium saas landing dark theme" --count 5
 ```
 
+**Backend recommendation**: set `BRAVE_API_KEY` and use `--backend brave` (or `--backend auto` with the key set). The DuckDuckGo backend scrapes HTML without an API key but is fragile (markup changes break the parser; we now throw a distinct "DuckDuckGo HTML markup changed; parser needs update" error so you can tell parser miss apart from a genuine zero-result query) and brittle (ToS gray area, easy rate-limit). Brave is the recommended path for production use.
+
 Drop template marketplaces and aggregators. Pick one URL, then run the capture.
 </details>
 

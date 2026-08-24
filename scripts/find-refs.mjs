@@ -55,14 +55,27 @@ const decodeEntities = (s) => s
 // Strip all HTML tags but keep text. Greedy-safe enough for search result fragments.
 const stripTags = (s) => s.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
 
+const DDG_MARKERS = [
+  /<form[^>]+action=["'][^"']*duckduckgo\.com/i,
+  /<input[^>]+name=["']q["']/i,
+  /class=["'][^"']*results?["']/i,
+  /duckduckgo\.com/i,
+];
+
+// True when html looks like a DuckDuckGo results page (vs. a captcha / rate-limit / markup change).
+// Short or non-string input is rejected outright.
 export function hasDdgMarkers(html) {
-  if (!html || typeof html !== 'string') return false;
-  const lower = html.toLowerCase();
-  return lower.includes('<input') || lower.includes('duckduckgo') || lower.includes('search_form') || lower.includes('class="result');
+  if (typeof html !== 'string' || html.length < 500) return false;
+  return DDG_MARKERS.some((re) => re.test(html));
 }
 
+// Parse a DDG HTML results page. Throws:
+//   - 'DuckDuckGo HTML markup changed; parser needs update...' when structural markers absent.
+//   - 'No results for prompt.' when markers present but parser found zero entries.
 export function parseDuckDuckGoHTML(html) {
-  if (!html || typeof html !== 'string') return [];
+  if (!hasDdgMarkers(html)) {
+    throw new Error('DuckDuckGo HTML markup changed; parser needs update. Use --backend brave with BRAVE_API_KEY as fallback.');
+  }
   const results = [];
   // Each DDG result block has a link `.result__a` with href, and a `.result__snippet`.
   // We grab the anchor + the nearest snippet following it.
@@ -77,6 +90,9 @@ export function parseDuckDuckGoHTML(html) {
     const finalUrl = extractDdgTarget(url) || url;
     results.push({ title, url: finalUrl, summary });
     if (results.length >= 50) break;
+  }
+  if (results.length === 0) {
+    throw new Error('No results for prompt.');
   }
   return results;
 }
@@ -113,13 +129,8 @@ async function searchDuckDuckGo(prompt, count) {
   });
   if (!res.ok) throw new Error(`DuckDuckGo HTTP ${res.status}`);
   const html = await res.text();
+  // parseDuckDuckGoHTML throws 'markup changed' or 'No results for prompt.'; both bubble up.
   const results = parseDuckDuckGoHTML(html);
-  if (results.length === 0) {
-    if (!hasDdgMarkers(html)) {
-      throw new Error('DuckDuckGo HTML markup changed; parser needs update. Use --backend brave with BRAVE_API_KEY as fallback.');
-    }
-    throw new Error('No results for prompt.');
-  }
   return results.slice(0, count);
 }
 
