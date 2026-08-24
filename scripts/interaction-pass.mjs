@@ -2,6 +2,57 @@
 // Extracted from inspect.mjs so the orchestrator stays under the AGENTS.md 400-line cap.
 import { join } from 'node:path';
 
+export const CLICK_CAP = 50;
+export const INTERACTIVE_CAP = 200;
+export const STABLE_INTERACTIVE_ROLES = new Set(['button', 'link', 'menuitem', 'tab', 'checkbox', 'radio', 'switch', 'combobox']);
+
+// Walk an a11y tree and return nodes that look clickable AND stable (named + interactive role).
+export function selectClickables(a11yTree) {
+  const out = [];
+  const walk = (node) => {
+    if (!node) return;
+    const role = (node.role || '').toLowerCase();
+    if (STABLE_INTERACTIVE_ROLES.has(role) && (node.name || node.ariaLabel || node.value)) {
+      out.push({ role, name: node.name || node.ariaLabel || node.value || '' });
+    }
+    if (Array.isArray(node.children)) for (const c of node.children) walk(c);
+  };
+  walk(a11yTree);
+  return out.slice(0, CLICK_CAP);
+}
+
+// Bug 4 fix: extract only interactive elements (not the full recursive tree).
+// Accepts a serialized a11y-tree node OR a DOM-snapshot array of plain objects.
+export function extractInteractiveElements(root) {
+  const results = [];
+  const INTERACTIVE_TAGS = new Set(['a', 'button', 'input', 'select', 'textarea']);
+  const walk = (node) => {
+    if (!node || results.length >= INTERACTIVE_CAP) return;
+    const role = (node.role || '').toLowerCase();
+    const tag = (node.tag || '').toLowerCase();
+    const isInteractive = (
+      STABLE_INTERACTIVE_ROLES.has(role) ||
+      INTERACTIVE_TAGS.has(tag) ||
+      node.href ||
+      node.tabIndex >= 0
+    );
+    if (isInteractive) {
+      results.push({
+        tag: tag || null,
+        role: role || null,
+        name: (node.name || node.ariaLabel || node.alt || node.title || '').slice(0, 80),
+        href: node.href || null,
+        value: node.value || null,
+        outerHTML: node.outerHTML ? node.outerHTML.slice(0, 200) : null,
+      });
+    }
+    const children = node.children || [];
+    for (const c of children) walk(c);
+  };
+  walk(root);
+  return results;
+}
+
 export const INTERACTION_CAP = 20;
 export const INTERACTION_SEL = 'a[href], button:not([disabled]), [role="button"]:not([disabled]), input[type="submit"], [tabindex="0"]';
 const CLICK_TIMEOUT_MS = 8000;
