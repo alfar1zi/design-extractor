@@ -6,9 +6,11 @@ import { mkdir, writeFile, stat } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
-// scanAnimationLibs split to scan-libs.mjs so this file stays under the AGENTS.md 400-line cap.
 import { scanAnimationLibs } from './scan-libs.mjs';
-export { scanAnimationLibs };
+import { saveCssAnimations } from './css-animation-extract.mjs';
+import { sourcemapPass } from './sourcemap-pass.mjs';
+import { detectCanvas } from './canvas-detect.mjs';
+export { scanAnimationLibs, selectClickables, extractInteractiveElements };
 
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 const TABLET = { width: 768, height: 1024 };
@@ -30,6 +32,7 @@ export function parseArgs(argv) {
     url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: 30,
     scroll: true, interactions: true, hover: true, sweep: true, siteDir: null,
     recordVideo: false, recordHoverVideo: false, allowPrivate: false, help: false,
+    sourcemap: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -53,6 +56,26 @@ export function parseArgs(argv) {
       case '--record-hover-video': out.recordHoverVideo = true; break;
       case '--allow-private': out.allowPrivate = true; break;
       case '-h': case '--help': out.help = true; break;
+      case '--quick':
+        out.scroll = false;
+        out.interactions = false;
+        out.hover = false;
+        out.sweep = false;
+        out.sourcemap = false;
+        break;
+      case '--full':
+        out.scroll = true;
+        out.interactions = true;
+        out.hover = true;
+        out.sweep = true;
+        out.sourcemap = true;
+        break;
+      case '--standard':
+        // default, no change
+        break;
+      case '--sourcemap':
+        out.sourcemap = true;
+        break;
       default: throw new Error(`unknown flag: ${a}`);
     }
   }
@@ -105,13 +128,14 @@ Options:
   --site-dir <PATH>    site source dir; if given, scans for animation libs
   --viewport WxH       primary viewport (default: 1440x900)
   --timeout <sec>      page goto timeout, then 1.5s hydration wait (default: 30)
-  --no-scroll          skip scroll-through screenshot pass
-  --no-interactions    skip clickable interaction pass
-  --no-hover           skip hover pass (transition timing + before/after screenshots)
-  --no-sweep           skip tablet+mobile viewport sweep
-  --record-video       record scroll pass as webm video (slow, large; off by default)
-  --record-hover-video record hover pass as webm video (one clip per element; large)
-  --allow-private      allow private/loopback URLs (off by default; SSRF guard)
+  --quick              preset: CSS-native only (no scroll/interactions/hover/sweep/sourcemap)
+  --standard           preset: default (scroll, interactions, hover, sweep on; sourcemap off)
+  --full               preset: all passes + sourcemap fetch + AST scan
+  --no-scroll          skip scroll pass    --no-interactions  skip interaction pass
+  --no-hover           skip hover pass     --no-sweep         skip tablet+mobile sweep
+  --record-video       record scroll pass as webm (slow, large)
+  --record-hover-video record hover pass as webm (one clip per element)
+  --allow-private      allow private/loopback URLs (SSRF guard off)
   -h, --help           show this help
 Outputs: screenshots/, a11y-tree.json, a11y-interactive.json, tokens.json, dom.html,
          network.json, console.json, interactions.json, hover.json, animation-libs.json, manifest.json
@@ -220,13 +244,8 @@ async function scrollPass(page, viewport, docHeight, screenshotDir) {
   return files;
 }
 
-// Fresh-page-per-click: each element is clicked in its own page load, eliminating
-// stale handle errors from SPA navigation. Re-queries the same selector on every
-// fresh page and picks element N by index, which is stable as long as page loads
-// consistently.
 // Interaction + hover passes extracted to interaction-pass.mjs to keep inspect.mjs lean.
 import { interactionPass, hoverPass, dismissOverlays, categorizeError, INTERACTION_CAP, INTERACTION_SEL, selectClickables, extractInteractiveElements } from './interaction-pass.mjs';
-export { interactionPass, hoverPass, dismissOverlays, categorizeError, INTERACTION_CAP, INTERACTION_SEL, selectClickables, extractInteractiveElements };
 
 async function sweepPass(browser, url, timeoutSec, screenshotDir) {
   const out = [];
@@ -264,7 +283,6 @@ async function main() {
   dim(`Viewport: ${args.viewport.width}x${args.viewport.height}  timeout: ${args.timeout}s`);
 
   const browser = await launchOrHint();
-  // Fix 2: when --record-video, pass recordVideo option so Playwright captures the scroll pass.
   const ctxOptions = { viewport: args.viewport };
   if (args.recordVideo || args.recordHoverVideo) {
     const videoDir = join(outDir, 'videos');
@@ -282,6 +300,8 @@ async function main() {
   }
 
   const { page, a11y, tokens, dom, docHeight, net, con, screenshotDir } = primary;
+  const canvasInfo = await detectCanvas(page);
+  const cssResult = await saveCssAnimations(page, outDir);
   const interactive = extractInteractiveElements(a11y);
   await writeFile(join(outDir, 'a11y-tree.json'), JSON.stringify(a11y, null, 2));
   await writeFile(join(outDir, 'a11y-interactive.json'), JSON.stringify(interactive, null, 2));
@@ -342,6 +362,25 @@ async function main() {
     dim(`Animation libs: ${Object.entries(animLibs).filter(([, v]) => v.found).map(([k]) => k).join(', ') || 'none detected'}`);
   }
 
+  // Sourcemap extraction (if enabled)
+  let jsSourcemap = [], jsInferred = [];
+  if (args.sourcemap) {
+    const sm = await sourcemapPass(net, args, outDir);
+    jsSourcemap = sm.jsSourcemap;
+    jsInferred = sm.jsInferred;
+  }
+
+  // Build motionCapture section
+  let cssAnimData = [];
+  try { cssAnimData = JSON.parse(await readFile(join(outDir, 'animations-css.json'), 'utf8')); } catch {}
+  const motionCapture = {
+    mode: args.sourcemap ? 'full' : (args.scroll || args.interactions || args.hover ? 'standard' : 'quick'),
+    cssNative: cssAnimData, jsSourcemap, jsInferred,
+    visualOnly: canvasInfo.map(c => ({
+      ...c, warning: "Efek ini dirender di canvas/WebGL, tidak ada representasi DOM/CSS yang bisa diekstrak. Referensi ini hanya untuk dilihat manusia sebagai acuan visual, bukan kode yang bisa dipakai langsung."
+    }))
+  };
+
   await browser.close().catch(() => {});
 
   const manifest = {
@@ -350,6 +389,7 @@ async function main() {
     docHeight, artifactCount: artifacts.length, artifacts,
     videoPath: args.recordVideo ? join(outDir, 'videos', 'scroll.webm') : null,
     hoverVideoPath: args.recordHoverVideo ? join(outDir, 'videos', 'hover.webm') : null,
+    motionCapture,
   };
   await writeFile(join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
   ok(`OK: ${outDir} (${artifacts.length} artifacts)`);

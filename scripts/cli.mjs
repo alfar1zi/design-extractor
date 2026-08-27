@@ -13,13 +13,18 @@ const DEFAULT_TIMEOUT = 30;
 // ---- pure helpers (exported for tests) ----
 
 export function parseArgs(argv) {
-  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, sweep: true, skipSave: false, skipInspect: false, allowPrivate: false, help: false };
+  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, sweep: true, skipSave: false, skipInspect: false, allowPrivate: false, help: false, sourcemap: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
     switch (a) {
       case '--out': out.outDir = next(); break;
-      case '--viewport': out.viewport = next(); break;
+      case '--viewport': {
+        const val = next();
+        if (!/^\d+x\d+$/.test(val || '')) throw new Error('--viewport must be WxH, e.g. 1440x900');
+        out.viewport = val;
+        break;
+      }
       case '--timeout': out.timeout = Number(next()); break;
       case '--no-scroll': out.scroll = false; break;
       case '--no-interactions': out.interactions = false; break;
@@ -28,6 +33,24 @@ export function parseArgs(argv) {
       case '--skip-inspect': out.skipInspect = true; break;
       case '--allow-private': out.allowPrivate = true; break;
       case '-h': case '--help': out.help = true; break;
+      case '--quick':
+        out.scroll = false;
+        out.interactions = false;
+        out.sweep = false;
+        out.sourcemap = false;
+        break;
+      case '--full':
+        out.scroll = true;
+        out.interactions = true;
+        out.sweep = true;
+        out.sourcemap = true;
+        break;
+      case '--standard':
+        // default, no change
+        break;
+      case '--sourcemap':
+        out.sourcemap = true;
+        break;
       default:
         if (out.url) throw new Error(`unknown flag: ${a}`);
         out.url = a;
@@ -67,6 +90,7 @@ export function buildChildArgs(opts) {
     if (!opts.interactions) inspect.push('--no-interactions');
     if (!opts.sweep) inspect.push('--no-sweep');
     if (opts.allowPrivate) inspect.push('--allow-private');
+    if (opts.sourcemap) inspect.push('--sourcemap');
     args.push(['inspect', inspect]);
   }
   return args;
@@ -160,6 +184,9 @@ Options:
   --out <DIR>           output directory (default: ./ref_<host>_<YYYYMMDD_HHmmss>)
   --viewport WxH        viewport for inspect (default: 1440x900)
   --timeout <sec>       page goto timeout for inspect (default: 30)
+  --quick               preset: disable all passes (scroll, interactions, sweep); sourcemap off
+  --standard            preset: default behavior (scroll, interactions, sweep on; sourcemap off)
+  --full                preset: enable all passes + sourcemap extraction
   --no-scroll           skip scroll screenshot pass
   --no-interactions     skip clickable interaction pass
   --no-sweep            skip tablet+mobile viewport sweep

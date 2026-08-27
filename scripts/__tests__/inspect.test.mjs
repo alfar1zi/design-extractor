@@ -179,3 +179,41 @@ test('dismissOverlays swallows errors from dispatch without throwing', async () 
   const dispatch = async () => { throw new Error('selector not present'); };
   await dismissOverlays(null, dispatch); // must not throw
 });
+
+// Preset flag tests
+test('parseArgs --quick sets scroll/interactions/hover/sweep/sourcemap false', () => {
+  const a = parseArgs(['--url', 'https://x.test', '--quick']);
+  assert.equal(a.scroll, false);
+  assert.equal(a.interactions, false);
+  assert.equal(a.hover, false);
+  assert.equal(a.sweep, false);
+  assert.equal(a.sourcemap, false);
+});
+
+test('parseArgs --full sets all true and sourcemap true', () => {
+  const a = parseArgs(['--url', 'https://x.test', '--full']);
+  assert.equal(a.scroll, true);
+  assert.equal(a.interactions, true);
+  assert.equal(a.hover, true);
+  assert.equal(a.sweep, true);
+  assert.equal(a.sourcemap, true);
+});
+
+test('parseArgs --standard (no flag) keeps defaults sourcemap false', () => {
+  const a = parseArgs(['--url', 'https://x.test']);
+  // defaults: scroll, interactions, hover, sweep = true, sourcemap = false
+  assert.equal(a.scroll, true);
+  assert.equal(a.interactions, true);
+  assert.equal(a.hover, true);
+  assert.equal(a.sweep, true);
+  assert.equal(a.sourcemap, false);
+});
+
+test('parseArgs --no-scroll overrides --full', () => {
+  const a = parseArgs(['--url', 'https://x.test', '--full', '--no-scroll']);
+  assert.equal(a.scroll, false);
+  assert.equal(a.interactions, true);
+  assert.equal(a.hover, true);
+  assert.equal(a.sweep, true);
+  assert.equal(a.sourcemap, true);
+});

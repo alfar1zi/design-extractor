@@ -116,9 +116,27 @@ Also check `live/tokens.json` (written by the inspect pass): it holds the resolv
 
 Static source can miss runtime behavior — the page as the user experiences it.
 
+### Capture modes
+
+The inspect step supports three capture modes. Pick the one that matches your time budget and depth needs.
+
+| Mode | Flag | What it does | Typical duration |
+|---|---|---|---|
+| Quick | `--quick` | CSS-native animation extraction only (source download + CSS/computed-style scan). No interaction, hover, scroll, or sweep passes. | 30s - 2min |
+| Standard | default (no flag) | Interaction pass + hover pass + scroll pass + viewport sweep. CSS-native animation extraction. No sourcemap fetch or AST scan. This is the backward-compatible default. | 2-5min |
+| Full | `--full` | Everything in Standard plus sourcemap fetch (same-origin, 5s timeout) and acorn AST scan for GSAP/ScrollTrigger call expressions. Detects canvas/WebGL elements for visual-only fallback. | 5-10min+ |
+
+Individual `--no-scroll`, `--no-hover`, `--no-interactions`, `--no-sweep` flags still work as overrides after the preset is applied.
+
+**Caveat on `--full`**: Sourcemap fetch may take significant time on sites with many JS bundles. Cross-origin sourcemaps that fail or timeout after 5 seconds fall back silently to the `js-inferred` tier. The scan does not block the rest of the capture.
+
 ```bash
 npx design-extractor-inspect https://target.example --out ./refs/target/live --viewport 1440x900
-# optional flags:
+# mode presets:
+npx design-extractor-inspect ... --quick          # CSS-native only, fastest
+npx design-extractor-inspect ... --standard       # default, backward-compatible
+npx design-extractor-inspect ... --full           # all tiers including sourcemap + AST scan
+# other flags:
 npx design-extractor-inspect ... --record-video        # record scroll pass as .webm (slow)
 npx design-extractor-inspect ... --site-dir ./refs/target/site  # scan downloaded JS for animation libs
 ```
@@ -133,6 +151,30 @@ Procedure:
 6. SPA / JS-render caveat. If the page is JS-rendered (React, Vue, hydration), the static download may hold only a shell. The browser DOM is the truth. Capture `page.content()` after load and diff against the downloaded HTML. This is exactly why Step 2 and Step 3 are both required.
 7. Network pass. Reload with the network log on. Catch web fonts (woff2), lazy-loaded images, CDN-hosted scripts, third-party trackers. Cross-reference with the asset list from Step 2.
 8. Animation lib scan. If `--site-dir` is passed, grep the downloaded JS for GSAP, Lenis, framer-motion, AOS, scrollReveal, and IntersectionObserver usage. Writes `animation-libs.json`.
+
+### Fidelity tiers
+
+Every animation or interaction captured is labeled with a fidelity tier. **Never treat lower-fidelity tiers as equivalent to higher ones.**
+
+| Tier | Label | How it's captured | Fidelity | Caveat |
+|---|---|---|---|---|
+| CSS-native | `css-native` | `document.getAnimations()` + `CSSKeyframesRule` cross-check via CSSOM | Exact | Does NOT capture `requestAnimationFrame`-driven animations (including GSAP by default). |
+| JS-sourcemap | `js-sourcemap` | Sourcemap fetched (same-origin, 5s timeout), acorn AST scan on reconstructed source | High (reconstructed) | Reconstructed from source, not verified against live runtime behavior. |
+| JS-inferred | `js-inferred` | Acorn AST scan directly on minified bundle (fallback when sourcemap fails) | Low-medium | Static analysis of minified code. Property names are usually not mangled but this is not guaranteed. Treat as educated guess. |
+| Visual-only | `visual-only` | Canvas/WebGL/Three.js detection via `document.querySelectorAll('canvas')` + WebGL context check | Reference only | No DOM/CSS representation exists to extract. Screenshot/video only for human reference, not reusable code. |
+
+Results are written to separate JSON files per tier and merged into `manifest.json` under `motionCapture`:
+
+```
+manifest.json -> motionCapture
+  mode: "quick" | "standard" | "full"
+  cssNative: [...]       // from animations-css.json
+  jsSourcemap: [...]     // from animations-js-sourcemap.json (--full only)
+  jsInferred: [...]      // from animations-js-inferred.json (--full only, fallback)
+  visualOnly: [...]      // canvas/WebGL detection results
+```
+
+When reading animation data from a captured reference, always check the `fidelity` field before using the result. `js-inferred` and `visual-only` are starting points for manual reconstruction, not drop-in code.
 
 This is the "page as the user experiences it" half.
 
@@ -178,9 +220,14 @@ refs/target/
     network.json          requests, fonts, lazy assets
     console.json          console messages and page errors
     interactions.json     click-pass results (fresh page per element)
+    hover.json            hover pass results (transition timing + before/after)
     animation-libs.json   animation lib fingerprint scan (if --site-dir passed)
+    animations-css.json   CSS-native animations (always captured)
+    animations-js-sourcemap.json  JS animations from sourcemap (--full only)
+    animations-js-inferred.json   JS animations from AST scan (--full only, fallback)
+    sourcemap-recovered/  original source tree recovered from sourcemaps (--full only)
     videos/scroll.webm    scroll pass recording (if --record-video passed)
-    manifest.json         summary of all artifacts
+    manifest.json         summary of all artifacts + motionCapture section
   REFERENCE.md            merged Step 4 doc
 ```
 
