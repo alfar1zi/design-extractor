@@ -2,24 +2,37 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { extractFromSourceMap, sanitizeRecoveredPath, scanJsAST } from '../sourcemap-extract.mjs';
 
+const outDir = resolve(tmpdir(), 'sourcemap-test-out');
+
 test('sanitizeRecoveredPath guards path traversal', () => {
-  const outDir = 'C:\\test-out';
+  const base = join(outDir, 'sourcemap-recovered');
   // Standard paths
   assert.equal(
     sanitizeRecoveredPath(outDir, 'webpack:///src/components/Button.js').replace(/\\/g, '/'),
-    'C:/test-out/sourcemap-recovered/src/components/Button.js'
+    base.replace(/\\/g, '/') + '/src/components/Button.js'
   );
   assert.equal(
     sanitizeRecoveredPath(outDir, 'http://localhost:3000/assets/main.js').replace(/\\/g, '/'),
-    'C:/test-out/sourcemap-recovered/assets/main.js'
+    base.replace(/\\/g, '/') + '/assets/main.js'
   );
-  assert.equal(
-    sanitizeRecoveredPath(outDir, '../traversal.js').replace(/\\/g, '/'),
-    'C:/test-out/sourcemap-recovered/traversal.js'
-  );
+  // Traversal payloads - all must stay inside sourcemap-recovered
+  const payloads = [
+    '../traversal.js',
+    '../../../../../../etc/passwd',
+    '..\\..\\..\\windows\\system32\\config',
+    '/etc/passwd',
+    'C:\\Windows\\System32\\config',
+  ];
+  for (const payload of payloads) {
+    const result = sanitizeRecoveredPath(outDir, payload);
+    assert.ok(
+      result.startsWith(base) || result.startsWith(base.replace(/\\/g, '/')),
+      `payload "${payload}" escaped: ${result}`
+    );
+  }
 });
 
 test('scanJsAST extracts animations with full fidelity arguments', () => {
