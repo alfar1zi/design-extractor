@@ -41,6 +41,20 @@
     "audit",
     "motion"
   ],
+  "files": [
+    "commands",
+    "scripts",
+    "!scripts/__tests__",
+    "skills",
+    "assets",
+    "examples",
+    "install.sh",
+    "install.ps1",
+    "skill.json",
+    "AGENTS.md",
+    "README.md",
+    "LICENSE"
+  ],
   "license": "MIT",
   "author": "alfar1zi",
   "repository": {
