@@ -1,7 +1,16 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
-import { parseArgs, validateUrl, buildChildArgs, buildReferenceStub } from '../cli.mjs';
+import { createServer } from 'node:http';
+import { execFile } from 'node:child_process';
+import { mkdtemp, rm, readdir } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { parseArgs, validateUrl, buildChildArgs } from '../cli.mjs';
+
+const exec = promisify(execFile);
+const CLI = fileURLToPath(new URL('../cli.mjs', import.meta.url));
 
 test('parseArgs requires url', () => {
   assert.throws(() => parseArgs([]), /url is required/);
@@ -58,14 +67,20 @@ test('validateUrl throws on junk', async () => {
   await assert.rejects(validateUrl('not a url'), /invalid URL/);
 });
 
-test('buildChildArgs runs save and inspect by default', () => {
+test('buildChildArgs runs inspect only by default', () => {
   const out = buildChildArgs({ out: './o', url: 'https://x.test', skipSave: false, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true });
+  assert.equal(out.length, 1);
+  assert.equal(out[0][0], 'inspect');
+  assert.ok(out[0][1].includes('--viewport'));
+  assert.ok(out[0][1].includes('1440x900'));
+});
+
+test('buildChildArgs prepends save when --legacy-source is set', () => {
+  const out = buildChildArgs({ out: './o', url: 'https://x.test', legacySource: true, skipSave: false, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true });
   assert.equal(out.length, 2);
   assert.equal(out[0][0], 'save');
   assert.deepEqual(out[0][1], ['--url', 'https://x.test', '--out', join('./o', 'site')]);
   assert.equal(out[1][0], 'inspect');
-  assert.ok(out[1][1].includes('--viewport'));
-  assert.ok(out[1][1].includes('1440x900'));
 });
 
 test('buildChildArgs always emits --url flag to children (no positional URL)', () => {
@@ -80,7 +95,7 @@ test('buildChildArgs always emits --url flag to children (no positional URL)', (
 });
 
 test('buildChildArgs skips inspect only', () => {
-  const out = buildChildArgs({ out: './o', url: 'https://x.test', skipSave: false, skipInspect: true, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true });
+  const out = buildChildArgs({ out: './o', url: 'https://x.test', legacySource: true, skipSave: false, skipInspect: true, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true });
   assert.equal(out.length, 1);
   assert.equal(out[0][0], 'save');
 });
@@ -93,8 +108,8 @@ test('buildChildArgs propagates no-* flags to inspect', () => {
   assert.ok(out[0][1].includes('--no-sweep'));
 });
 
-test('buildChildArgs passes --site-dir to inspect when save also runs', () => {
-  const out = buildChildArgs({ out: './o', url: 'https://x.test', skipSave: false, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true });
+test('buildChildArgs passes --site-dir to inspect when the legacy source step runs', () => {
+  const out = buildChildArgs({ out: './o', url: 'https://x.test', legacySource: true, skipSave: false, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true });
   const inspectArgs = out.find(([n]) => n === 'inspect')[1];
   const siteIdx = inspectArgs.indexOf('--site-dir');
   assert.notEqual(siteIdx, -1, 'inspect must receive --site-dir when save runs');
@@ -102,28 +117,48 @@ test('buildChildArgs passes --site-dir to inspect when save also runs', () => {
 });
 
 test('buildChildArgs omits --site-dir when skipSave is true', () => {
-  const out = buildChildArgs({ out: './o', url: 'https://x.test', skipSave: true, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true });
+  const out = buildChildArgs({ out: './o', url: 'https://x.test', legacySource: true, skipSave: true, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true });
   const inspectArgs = out.find(([n]) => n === 'inspect')[1];
   assert.ok(!inspectArgs.includes('--site-dir'), 'inspect must NOT receive --site-dir when save was skipped');
 });
 
-test('buildReferenceStub has all 7 sections', () => {
-  const md = buildReferenceStub({ url: 'https://x.test', host: 'x.test', outDir: '/o', sourceDir: '/o/site', liveDir: '/o/live', viewport: '1440x900', timestamp: '2026-08-22T10:00:00Z' });
-  assert.match(md, /## 1\. Design read/);
-  assert.match(md, /## 2\. Design system/);
-  assert.match(md, /## 3\. Components/);
-  assert.match(md, /## 4\. Layout map/);
-  assert.match(md, /## 5\. Animations/);
-  assert.match(md, /## 6\. Assets/);
-  assert.match(md, /## 7\. What to steal 1:1/);
+test('buildChildArgs omits the third-party save step unless --legacy-source is set', () => {
+  const base = { out: './o', url: 'https://x.test', skipSave: false, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true };
+  assert.equal(buildChildArgs(base).some(([n]) => n === 'save'), false, 'save must be opt-in: it POSTs the target URL to a third party');
+  assert.equal(buildChildArgs({ ...base, legacySource: true }).some(([n]) => n === 'save'), true);
 });
 
-test('buildReferenceStub auto-fills known fields', () => {
-  const md = buildReferenceStub({ url: 'https://x.test', host: 'x.test', outDir: '/o', sourceDir: '/o/site', liveDir: '/o/live', viewport: '1440x900', timestamp: '2026-08-22T10:00:00Z' });
-  assert.match(md, /URL: https:\/\/x\.test/);
-  assert.match(md, /Viewport: 1440x900/);
-  assert.match(md, /Source: \/o\/site/);
-  assert.match(md, /Live: \/o\/live/);
-  assert.match(md, /2026-08-22T10:00:00Z/);
-  assert.match(md, /Reference: <x\.test> by <owner>/);
+
+test('a clean capture reports its output and exits 0', async () => {
+  // The one path the unit tests cannot reach. Everything above tests helpers
+  // that main() composes; nothing runs main() itself, so a plain assignment
+  // outside the helpers threw a ReferenceError at the very end of every
+  // successful run - after the capture was written, and past every other test.
+  // A script that always exits non-zero fails the calling step, and the
+  // artifacts it did produce are discarded with it.
+  const page = '<!doctype html><html><body><h1>hi</h1></body></html>';
+  const server = createServer((req, res) => {
+    res.writeHead(200, { 'content-type': 'text/html' });
+    res.end(page);
+  });
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const out = await mkdtemp(join(tmpdir(), 'de-cli-'));
+  let code = 0;
+  let stdout = '';
+  try {
+    const r = await exec(process.execPath, [CLI, `http://127.0.0.1:${server.address().port}/`,
+      '--out', out, '--allow-private', '--quick', '--no-scroll', '--no-interactions',
+      '--no-sweep', '--no-states', '--skip-save', '--timeout', '20'], { timeout: 180000 });
+    // `execFile` signals a non-zero exit by rejecting; on success it resolves
+    // with no `code` property at all.
+    code = r.code ?? 0; stdout = r.stdout;
+  } catch (e) {
+    code = e.code; stdout = e.stdout || '';
+  } finally {
+    await new Promise((r) => server.close(r));
+    await rm(out, { recursive: true, force: true });
+  }
+
+  assert.equal(code, 0, `a capture where every pass worked exits 0; got:\n${stdout}`);
+  assert.match(stdout, /live:/, 'and it names the directory it wrote');
 });

@@ -23,3 +23,28 @@ jobs:
       - run: npm ci
       - run: npx playwright install --with-deps chromium  # required: css-animation-extract.test.mjs launches a real browser
       - run: npm test
+
+  smoke:
+    name: browser smoke gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # A unit suite that only proves the modules agree with each other cannot
+      # prove the capture still works against a real page. These three do.
+      - run: node scripts/__tests__/redirect-ssrf.smoke.mjs
+      # Captures the checked-in fixture, not a third party. Against
+      # tailwindcss.com a redesign there turned a real regression green and an
+      # outage turned CI red for reasons that had nothing to do with this repo.
+      - run: node scripts/__tests__/local-capture.smoke.mjs /tmp/de-smoke
+      - run: node scripts/__tests__/offline-tree.smoke.mjs /tmp/de-smoke/live
+      # The unit suite runs from the working tree and cannot see what npm
+      # actually ships. A packaging slip publishes a package whose every path
+      # is missing, and nothing fails until a user installs it.
+      - run: node scripts/__tests__/pack-contents.smoke.mjs

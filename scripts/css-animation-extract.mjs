@@ -1,92 +1,104 @@
-import { writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+// css-animation-extract.mjs - what the CSS engine itself is running.
+//
+// Two passes, because they answer different questions:
+//   - document.getAnimations() says what is moving right now, keyframe by keyframe;
+//   - a recursive walk of styleSheets says what is defined, including inside the
+//     @media and @supports blocks the old flat walk never entered.
+//
+// Neither sees GSAP, anime.js or a requestAnimationFrame loop; motion-sampler.mjs
+// covers those. Anything not observed by all three is genuinely not moving.
 
-// Extract animations from the live page.
-// Returns an array of css-native animation descriptors.
+/**
+ * Read CSS-native animation state out of a live page.
+ *
+ * @param {import('playwright').Page} page
+ * @returns {Promise<{running: Array, keyframes: Array, truncated: boolean}>}
+ */
 export async function extractCssAnimations(page) {
   return await page.evaluate(() => {
-    const results = [];
+    const KEYFRAME_FIELDS = ['composite', 'offset', 'computedOffset', 'easing', 'effectingTiming'];
 
-    // 1. Traverse document.getAnimations() for active animations
-    // (Note: getAnimations() does not see requestAnimationFrame/GSAP by default)
-    try {
-      const activeAnims = document.getAnimations();
-      for (const anim of activeAnims) {
-        if (!anim.effect) continue;
-        const target = anim.effect.target;
-        if (!target) continue;
-        
-        // Build selector path for target
-        let selector = '';
-        try {
-          selector = target.id ? `#${target.id}` : `${target.tagName.toLowerCase()}${target.className ? '.' + [...target.classList].join('.') : ''}`;
-        } catch { selector = 'unknown'; }
-
-        let keyframes = [];
-        try { keyframes = anim.effect.getKeyframes(); } catch { /* ignore */ }
-
-        let timing = {};
-        try { timing = anim.effect.getTiming(); } catch { /* ignore */ }
-
-        results.push({
-          fidelity: 'css-native',
-          type: 'active-animation',
-          selector,
-          animationName: anim.animationName || null,
-          playState: anim.playState,
-          duration: timing.duration,
-          delay: timing.delay,
-          iterations: timing.iterations,
-          easing: timing.easing,
-          keyframes: keyframes.map(k => ({
-            offset: k.offset,
-            computedOffset: k.computedOffset,
-            easing: k.easing,
-            ...Object.fromEntries(Object.entries(k).filter(([key]) => !['offset', 'computedOffset', 'easing'].includes(key)))
-          }))
-        });
+    /** A selector that resolves to exactly one element, or says that it could not. */
+    function selectorFor(el) {
+      if (!el || el.nodeType !== 1) return { selector: null, unique: false };
+      const parts = [];
+      for (let node = el, depth = 0; node && node.nodeType === 1 && depth < 6; node = node.parentElement, depth++) {
+        let part = node.tagName.toLowerCase();
+        if (node.id) { parts.unshift(`#${CSS.escape(node.id)}`); break; }
+        // classList, not className: on an SVG element className is an SVGAnimatedString.
+        for (const c of node.classList) { part += `.${CSS.escape(c)}`; break; }
+        parts.unshift(part);
+        if (parts[0] !== '*' && document.querySelectorAll(parts.join(' > ')).length === 1) break;
       }
-    } catch (e) {
-      // getAnimations might fail on some elements
+      const selector = parts.join(' > ');
+      let unique = false;
+      try { unique = document.querySelectorAll(selector).length === 1; } catch { unique = false; }
+      return { selector, unique };
     }
 
-    // 2. Cross-check document.styleSheets for CSSKeyframesRule
-    try {
-      for (const sheet of document.styleSheets) {
-        let rules;
-        try { rules = sheet.cssRules || sheet.rules; } catch { continue; } // ignore cross-origin stylesheet security blocks
-        if (!rules) continue;
-        for (const rule of rules) {
-          if (rule.type === CSSRule.KEYFRAMES_RULE || rule.tagName === 'keyframes') {
-            const keyframesRule = rule;
-            const steps = [];
-            for (const keyframe of keyframesRule.cssRules) {
-              steps.push({
-                keyText: keyframe.keyText,
-                cssText: keyframe.style.cssText
-              });
-            }
-            results.push({
-              fidelity: 'css-native',
-              type: 'keyframes-rule',
-              name: keyframesRule.name,
-              steps
-            });
-          }
+    const running = [];
+    for (const anim of document.getAnimations()) {
+      const effect = anim.effect;
+      if (!effect) continue;
+      const { selector, unique } = selectorFor(effect.target);
+      let timing = {};
+      let frames = [];
+      try { timing = effect.getTiming(); } catch { /* a timing-less effect is still a finding */ }
+      try { frames = effect.getKeyframes(); } catch { /* scroll-driven effects may refuse */ }
+      running.push({
+        type: 'running-animation',
+        animationName: anim.animationName || null,
+        playState: anim.playState,
+        currentTime: Number(anim.currentTime) || 0,
+        duration: timing.duration ?? null,
+        delay: timing.delay ?? null,
+        iterations: timing.iterations ?? null,
+        easing: timing.easing ?? null,
+        direction: timing.direction ?? null,
+        fill: timing.fill ?? null,
+        target: { selector, unique },
+        keyframes: frames.map((k) => {
+          const out = { offset: k.computedOffset, easing: k.easing, composite: k.composite };
+          // The named properties are the only ones a clone can act on.
+          for (const p of Object.keys(k)) if (!KEYFRAME_FIELDS.includes(p)) out[p] = k[p];
+          return out;
+        }),
+      });
+    }
+
+    // @keyframes can be nested anywhere, so the walk recurses into grouping rules.
+    const keyframes = [];
+    const seen = new Set();
+    const walk = (rules, inside) => {
+      for (const rule of rules) {
+        if (rule.type === CSSRule.KEYFRAMES_RULE) {
+          const id = `${inside}|${rule.name}`;
+          if (seen.has(id)) continue;
+          seen.add(id);
+          keyframes.push({
+            name: rule.name,
+            inside,
+            steps: Array.from(rule.cssRules, (k) => ({
+              keyText: k.keyText,
+              easing: k.easing,
+              declarations: k.style ? k.style.cssText : '',
+            })),
+          });
+          continue;
+        }
+        if (rule.cssRules) {
+          const media = rule.conditionText || rule.media?.mediaText || null;
+          walk(rule.cssRules, inside ? `${inside} > ${media || rule.constructor.name}` : (media || rule.constructor.name));
         }
       }
-    } catch (e) {
-      // styleSheets cross-check failed
+    };
+    for (const sheet of document.styleSheets) {
+      let rules;
+      // A cross-origin stylesheet throws on access, not on the walk.
+      try { rules = sheet.cssRules; } catch { continue; }
+      if (rules) walk(rules, sheet.href ? new URL(sheet.href, location.href).href : 'inline');
     }
 
-    return results;
+    return { running, keyframes, truncated: false };
   });
-}
-
-// Writes extracted animations to animations-css.json
-export async function saveCssAnimations(page, outDir) {
-  const data = await extractCssAnimations(page);
-  const dest = join(outDir, 'animations-css.json');
-  await writeFile(dest, JSON.stringify(data, null, 2));
-  return { path: dest, count: data.length };
 }

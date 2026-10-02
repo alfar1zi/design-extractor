@@ -1,16 +1,31 @@
 #!/usr/bin/env node
 // inspect.mjs - Playwright runtime capture for the design-extractor skill.
-// Lazy-imports playwright so pure helpers can be unit-tested without browser binary installed.
+// Playwright is lazy-imported so pure helpers unit-test without the browser binary.
 
 import { mkdir, writeFile, stat } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
 import { scanAnimationLibs } from './scan-libs.mjs';
-import { saveCssAnimations } from './css-animation-extract.mjs';
+import { motionPass, summarizeMotion, describeMotion } from './motion-pass.mjs';
+import { sampleScrollTrack } from './scroll-track.mjs';
+import { componentPass } from './components-pass.mjs';
 import { sourcemapPass } from './sourcemap-pass.mjs';
 import { detectCanvas } from './canvas-detect.mjs';
-export { scanAnimationLibs, selectClickables, extractInteractiveElements };
+import { createCaptureStore } from './capture-store.mjs';
+import { installInterceptor } from './request-intercept.mjs';
+import { writeTree } from './tree-writer.mjs';
+import { tokenPass } from './tokens.mjs';
+import { collectUnproducible } from './unproducible.mjs';
+import { findUnreproducible } from './unreproducible-pass.mjs';
+import { writeManifest } from './manifest.mjs';
+import { runFidelityPass } from './fidelity-pass.mjs';
+import { runOptionalPasses, createAttempt } from './optional-passes.mjs';
+import { targetPass } from './target.mjs';
+import { recordPass } from './record-pass.mjs';
+
+// Re-exported so a consumer reaches it from the entry point.
+export { scanAnimationLibs };
 
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 const TABLET = { width: 768, height: 1024 };
@@ -29,10 +44,10 @@ export function defaultOutDir(url, now = new Date()) {
 
 export function parseArgs(argv) {
   const out = {
-    url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: 30,
-    scroll: true, interactions: true, hover: true, sweep: true, siteDir: null,
+    url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: 30, fidelity: null,
+    scroll: true, interactions: true, hover: true, states: true, sweep: true, siteDir: null,
     recordVideo: false, recordHoverVideo: false, allowPrivate: false, help: false,
-    sourcemap: false,
+    sourcemap: false, targets: [],
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -48,10 +63,12 @@ export function parseArgs(argv) {
         break;
       }
       case '--timeout': out.timeout = Number(next()); break;
+      case '--fidelity': out.fidelity = next(); break;
       case '--no-scroll': out.scroll = false; break;
       case '--no-interactions': out.interactions = false; break;
       case '--no-hover': out.hover = false; break;
       case '--no-sweep': out.sweep = false; break;
+      case '--no-states': out.states = false; break;
       case '--record-video': out.recordVideo = true; break;
       case '--record-hover-video': out.recordHoverVideo = true; break;
       case '--allow-private': out.allowPrivate = true; break;
@@ -61,6 +78,7 @@ export function parseArgs(argv) {
         out.interactions = false;
         out.hover = false;
         out.sweep = false;
+        out.states = false;
         out.sourcemap = false;
         break;
       case '--full':
@@ -68,6 +86,7 @@ export function parseArgs(argv) {
         out.interactions = true;
         out.hover = true;
         out.sweep = true;
+        out.states = true;
         out.sourcemap = true;
         break;
       case '--standard':
@@ -76,6 +95,12 @@ export function parseArgs(argv) {
       case '--sourcemap':
         out.sourcemap = true;
         break;
+      case '--target': {
+        const val = (next() || '').trim();
+        if (!val) throw new Error('--target needs a CSS selector, e.g. --target ".pricing-card"');
+        out.targets.push(val);
+        break;
+      }
       default: throw new Error(`unknown flag: ${a}`);
     }
   }
@@ -103,10 +128,6 @@ export function stepScrollPositions(viewport, step, docHeight = Infinity) {
   return positions;
 }
 
-function safeHost(url) {
-  try { return new URL(url).host; } catch { return 'unknown'; }
-}
-
 async function fileMeta(p) {
   try { return { path: p, size: (await stat(p)).size }; } catch { return { path: p, size: 0 }; }
 }
@@ -128,20 +149,23 @@ Options:
   --site-dir <PATH>    site source dir; if given, scans for animation libs
   --viewport WxH       primary viewport (default: 1440x900)
   --timeout <sec>      page goto timeout, then 1.5s hydration wait (default: 30)
-  --quick              preset: CSS-native only (no scroll/interactions/hover/sweep/sourcemap)
-  --standard           preset: default (scroll, interactions, hover, sweep on; sourcemap off)
-  --full               preset: all passes + sourcemap fetch + AST scan
+  --fidelity <dir>     score this capture's shots against a reference dir; writes fidelity.json
+  --quick              CSS-native only (no scroll/interactions/hover/states/sweep)
+  --standard           default: scroll, interactions, hover, states, sweep on
+  --full               all passes + sourcemap fetch + AST scan
   --no-scroll          skip scroll pass    --no-interactions  skip interaction pass
   --no-hover           skip hover pass     --no-sweep         skip tablet+mobile sweep
+  --no-states          skip hover/focus/checked state capture
+  --target <css>       clone one element and scope motion/components/tokens to it; repeatable
   --record-video       record scroll pass as webm (slow, large)
   --record-hover-video record hover pass as webm (one clip per element)
   --allow-private      allow private/loopback URLs (SSRF guard off)
   -h, --help           show this help
 Outputs: screenshots/, a11y-tree.json, a11y-interactive.json, tokens.json, dom.html,
-         network.json, console.json, interactions.json, hover.json, animation-libs.json, manifest.json
+         network.json, console.json, interactions.json, hover.json, states.json, motion.json,
+         components.authoritative.json (framework-reported; absent when none found),
+         components.inferred.json, unproducible.json, targets.json, fidelity.json, manifest.json
 `;
-
-// ---- playwright runtime ----
 
 async function launchOrHint() {
   try {
@@ -154,68 +178,6 @@ async function launchOrHint() {
   }
 }
 
-async function recordPass(context, url, viewport, timeoutSec, outDir) {
-  const page = await context.newPage();
-  await page.setViewportSize(viewport);
-  const net = [];
-  const con = [];
-  page.on('request', (r) => net.push({ url: r.url(), method: r.method(), resourceType: r.resourceType(), ts: Date.now() }));
-  page.on('response', async (r) => {
-    const rec = net.find((n) => n.url === r.url() && !n.status);
-    if (rec) {
-      rec.status = r.status();
-      rec.contentType = r.headers()['content-type'] || '';
-      try { rec.size = Number(r.headers()['content-length'] || 0); } catch { rec.size = 0; }
-    }
-  });
-  page.on('console', (m) => con.push({ level: m.type(), text: m.text(), location: m.location() || null, ts: Date.now() }));
-  page.on('pageerror', (e) => con.push({ level: 'error', text: `pageerror: ${e.message}`, ts: Date.now() }));
-
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutSec * 1000 });
-  // SPAs often keep long-poll / websocket connections open so networkidle never fires.
-  // Wait briefly for hydration instead.
-  await page.waitForTimeout(1500);
-
-  const screenshotDir = join(outDir, 'screenshots');
-  await mkdir(screenshotDir, { recursive: true });
-  await page.screenshot({ path: join(screenshotDir, 'viewport.png') });
-  await page.screenshot({ path: join(screenshotDir, 'full.png'), fullPage: true });
-
-  // Build a11y tree via DOM walk (page.accessibility removed in Playwright 1.47+).
-  const a11y = await page.evaluate(() => {
-    const ROLES = new Set(['button','link','checkbox','menuitem','option','radio','searchbox','slider','switch','tab','textbox','heading','img','navigation','main','banner','contentinfo','form','region','article','list','listitem']);
-    function walk(el, depth) {
-      if (depth > 8 || !el) return null;
-      const role = el.getAttribute('role') || (ROLES.has(el.tagName.toLowerCase()) ? el.tagName.toLowerCase() : (el.hasAttribute('href') ? 'link' : null));
-      const name = (el.getAttribute('aria-label') || el.getAttribute('alt') || el.getAttribute('title') || (el.textContent || '').trim().slice(0, 80)).trim();
-      const children = [];
-      for (const c of el.children) { const n = walk(c, depth + 1); if (n) children.push(n); }
-      if (!role && !children.length) return null;
-      return { role, name, tag: el.tagName.toLowerCase(), children };
-    }
-    return walk(document.documentElement, 0);
-  }) || { role: 'root', name: '', children: [] };
-
-  // Bug 2 fix: dump resolved CSS custom property values via getComputedStyle.
-  const tokens = await page.evaluate(() => {
-    const style = getComputedStyle(document.documentElement);
-    const PREFIXES = ['--color-', '--ease-', '--shadow-', '--radius-', '--font-size-', '--font-weight-', '--spacing-', '--border-'];
-    const out = {};
-    for (const prop of style) {
-      if (!prop.startsWith('--')) continue;
-      if (prop.startsWith('--sx-')) continue; // internal implementation vars
-      if (!PREFIXES.some((p) => prop.startsWith(p))) continue;
-      const val = style.getPropertyValue(prop).trim();
-      if (val) out[prop] = val;
-    }
-    return out;
-  });
-
-  const dom = await page.content();
-  const docHeight = await page.evaluate(() => document.documentElement.scrollHeight);
-
-  return { page, a11y, tokens, dom, docHeight, net, con, screenshotDir };
-}
 
 // Bug 3 fix: use page.mouse.wheel() in 120px increments instead of window.scrollTo().
 async function scrollPass(page, viewport, docHeight, screenshotDir) {
@@ -244,27 +206,10 @@ async function scrollPass(page, viewport, docHeight, screenshotDir) {
   return files;
 }
 
-// Interaction + hover passes extracted to interaction-pass.mjs to keep inspect.mjs lean.
-import { interactionPass, hoverPass, dismissOverlays, categorizeError, INTERACTION_CAP, INTERACTION_SEL, selectClickables, extractInteractiveElements } from './interaction-pass.mjs';
-
-async function sweepPass(browser, url, timeoutSec, screenshotDir) {
-  const out = [];
-  for (const [label, vp] of [['tablet', TABLET], ['mobile', MOBILE]]) {
-    const ctx = await browser.newContext({ viewport: vp });
-    const page = await ctx.newPage();
-    try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: timeoutSec * 1000 });
-      // SPA hydration wait (replaces networkidle which never fires on long-poll pages).
-      await page.waitForTimeout(1500);
-      const p = join(screenshotDir, `${label}.png`);
-      await page.screenshot({ path: p, fullPage: true });
-      out.push({ viewport: label, ...vp, file: p });
-    } finally {
-      await ctx.close();
-    }
-  }
-  return out;
-}
+// Re-exported so a consumer can reach the interaction helpers from the entry
+// point rather than having to know which module they ended up in.
+export { dismissOverlays, categorizeError, INTERACTION_CAP, INTERACTION_SEL, selectClickables, extractInteractiveElements } from './interaction-pass.mjs';
+import { extractInteractiveElements } from './interaction-pass.mjs';
 
 // ---- main ----
 async function main() {
@@ -279,8 +224,7 @@ async function main() {
   const outDir = args.outDir ? resolve(args.outDir) : defaultOutDir(args.url);
   await mkdir(outDir, { recursive: true });
   info(`URL: ${args.url}`);
-  dim(`OutDir: ${outDir}`);
-  dim(`Viewport: ${args.viewport.width}x${args.viewport.height}  timeout: ${args.timeout}s`);
+  dim(`Outdir: ${outDir}  ${args.viewport.width}x${args.viewport.height}  timeout: ${args.timeout}s`);
 
   const browser = await launchOrHint();
   const ctxOptions = { viewport: args.viewport };
@@ -290,36 +234,62 @@ async function main() {
     ctxOptions.recordVideo = { dir: videoDir, size: { width: args.viewport.width, height: args.viewport.height } };
   }
   const context = await browser.newContext(ctxOptions);
+  // Must be installed before any page exists, so the first document is captured too.
+  const store = createCaptureStore();
+  const treeRoot = join(outDir, 'tree');
+  const interceptor = await installInterceptor(context, store, { allowPrivate: !!args.allowPrivate, root: treeRoot });
   let primary;
   try {
-    primary = await recordPass(context, args.url, args.viewport, args.timeout, outDir);
+    primary = await recordPass(context, args.url, args.viewport, args.timeout, outDir, args.targets, err, store);
   } catch (e) {
     await browser.close().catch(() => {});
     err(`Primary capture failed: ${e.message}`);
     process.exit(1);
   }
 
-  const { page, a11y, tokens, dom, docHeight, net, con, screenshotDir } = primary;
+  const { page, a11y, dom, docHeight, net, con, screenshotDir } = primary;
   const canvasInfo = await detectCanvas(page);
-  const cssResult = await saveCssAnimations(page, outDir);
   const interactive = extractInteractiveElements(a11y);
-  await writeFile(join(outDir, 'a11y-tree.json'), JSON.stringify(a11y, null, 2));
-  await writeFile(join(outDir, 'a11y-interactive.json'), JSON.stringify(interactive, null, 2));
-  await writeFile(join(outDir, 'tokens.json'), JSON.stringify(tokens, null, 2));
+  const tokenCounts = await tokenPass(page, outDir, { scope: args.targets });
+  dim(`Tokens: ${tokenCounts.custom} custom properties, ${tokenCounts.derived} from the cascade${tokenCounts.scoped === undefined ? '' : `, ${tokenCounts.scoped} in force on the targets`}`);
+  // One shape, one loop: adding a JSON artifact used to mean editing two places.
+  const json = { 'a11y-tree': a11y, 'a11y-interactive': interactive, network: net, console: con };
+  for (const [name, body] of Object.entries(json)) {
+    await writeFile(join(outDir, `${name}.json`), JSON.stringify(body, null, 2));
+  }
   await writeFile(join(outDir, 'dom.html'), dom, 'utf8');
-  await writeFile(join(outDir, 'network.json'), JSON.stringify(net, null, 2));
-  await writeFile(join(outDir, 'console.json'), JSON.stringify(con, null, 2));
 
   const artifacts = [
     await fileMeta(join(screenshotDir, 'viewport.png')),
     await fileMeta(join(screenshotDir, 'full.png')),
-    await fileMeta(join(outDir, 'a11y-tree.json')),
-    await fileMeta(join(outDir, 'a11y-interactive.json')),
     await fileMeta(join(outDir, 'tokens.json')),
     await fileMeta(join(outDir, 'dom.html')),
-    await fileMeta(join(outDir, 'network.json')),
-    await fileMeta(join(outDir, 'console.json')),
+    ...await Promise.all(Object.keys(json).map((n) => fileMeta(join(outDir, `${n}.json`)))),
   ];
+
+  const capture = store.captureStats();
+  const tree = await writeTree(store, { outDir: treeRoot });
+  await writeFile(join(outDir, 'capture.json'), JSON.stringify({
+    ...capture,
+    redirects: store.redirects,
+    blocked: interceptor.blocked(),
+    tree: { written: tree.written, bytes: tree.bytes, unrewritten: tree.missed.length },
+  }, null, 2));
+  artifacts.push(await fileMeta(join(outDir, 'capture.json')));
+  dim(`Capture: ${tree.written} files, ${Math.round(tree.bytes / 1024)}KB, ${store.missing.length} missing, ${interceptor.blockedCount()} blocked redirects`);
+  if (tree.missed.length) dim(`Unrewritten references: ${tree.missed.length} (see capture.json)`);
+  // The tree is on disk, so the bodies are dead weight from here. Left attached the
+  // interceptor re-enters on every later pass and refills a store nothing reads
+  // again, which is how peak RSS passed twice the size of the capture it held.
+  await interceptor.uninstall();
+  store.releaseBodies();
+
+  // Sampled before the scroll pass, not after. Scrolling the page for the
+  // screenshots is what triggers the fade-ins and parallax this is looking for;
+  // by the time motion.json is written they have all already run.
+  const scrollTrack = args.scroll
+    ? await sampleScrollTrack(page, { steps: 8, scope: args.targets })
+    : [];
 
   if (args.scroll) {
     const scrollFiles = await scrollPass(page, args.viewport, docHeight, screenshotDir);
@@ -333,28 +303,14 @@ async function main() {
     }
   }
 
-  let interactions = [];
-  if (args.interactions) {
-    interactions = await interactionPass(context, args.url, args.timeout, screenshotDir);
-    await writeFile(join(outDir, 'interactions.json'), JSON.stringify(interactions, null, 2));
-    artifacts.push(await fileMeta(join(outDir, 'interactions.json')));
-    dim(`Interaction pass: ${interactions.length} clickables (${interactions.filter((i) => i.error).length} errored)`);
-  }
-
-  let hovers = [];
-  if (args.hover) {
-    hovers = await hoverPass(context, args.url, args.timeout, screenshotDir);
-    await writeFile(join(outDir, 'hover.json'), JSON.stringify(hovers, null, 2));
-    artifacts.push(await fileMeta(join(outDir, 'hover.json')));
-    dim(`Hover pass: ${hovers.length} hovers (${hovers.filter((h) => h.error).length} errored)`);
-  }
-
-  if (args.sweep) {
-    const sweep = await sweepPass(browser, args.url, args.timeout, screenshotDir);
-    for (const s of sweep) artifacts.push(await fileMeta(s.file));
-    dim(`Sweep pass: ${sweep.length} viewports`);
-  }
-
+  // Each reloads the page, so each may fail without taking the capture with it;
+  // the failures come back as `partials` -> manifest.json.
+  const partials = [];
+  const attempt = createAttempt(partials, err);
+  const optional = await runOptionalPasses({
+    context, page, browser, outDir, args, screenshotDir, fileMeta, dim, err, partials, attempt,
+  });
+  artifacts.push(...optional.artifacts);
   if (args.siteDir) {
     const animLibs = await scanAnimationLibs(args.siteDir);
     await writeFile(join(outDir, 'animation-libs.json'), JSON.stringify(animLibs, null, 2));
@@ -364,34 +320,76 @@ async function main() {
 
   // Sourcemap extraction (if enabled)
   let jsSourcemap = [], jsInferred = [];
-  if (args.sourcemap) {
-    const sm = await sourcemapPass(net, args, outDir);
-    jsSourcemap = sm.jsSourcemap;
-    jsInferred = sm.jsInferred;
+  if (args.sourcemap) ({ jsSourcemap, jsInferred } = await sourcemapPass(net, args, outDir));
+
+  const motion = await motionPass(page, outDir, {
+    scope: args.targets,
+    scroll: scrollTrack,
+    scrollSampled: Boolean(args.scroll),
+    writeMotion: false,
+  });
+  dim(summarizeMotion(motion));
+
+  const components = await componentPass(page, outDir, { scope: args.targets, motion });
+  // Listed only when it exists: a size-0 entry for a file the run deliberately
+  // did not write reads as a failed capture, not a page with no framework.
+  if (components.wroteAuthoritative) {
+    artifacts.push(await fileMeta(join(outDir, 'components.authoritative.json')));
+  }
+  artifacts.push(await fileMeta(join(outDir, 'components.inferred.json')));
+  dim(`Components: ${components.named} named, ${components.unnamed} minified, ${components.clusters} inferred clusters`
+    + (components.wroteAuthoritative ? '' : ' (no framework-reported components found)'));
+  if (args.targets.length) {
+    await mkdir(join(outDir, 'targets'), { recursive: true });
+    const t = await targetPass(page, args.targets, outDir);
+    artifacts.push(await fileMeta(join(outDir, 'targets.json')));
+    dim(`Targets: ${t.found} matched, ${t.shots} photographed, ${t.missing} matched nothing`);
+  }
+  await mkdir(join(screenshotDir, 'unreproducible'), { recursive: true });
+  const { items: perElement, crossOriginSheets } = await findUnreproducible(page, { scope: args.targets, shotDir: screenshotDir });
+  const unproducible = {
+    ...collectUnproducible({
+      canvasInfo, truncatedMotion: motion.truncated, unnamedComponents: components.unnamed,
+      crossOriginSheets,
+    }),
+    elements: perElement,
+    howToReadElements: 'One entry per element that cannot be rebuilt from the capture,'
+      + ' with a screenshot of the exact region to match against.',
+  };
+  await writeFile(join(outDir, 'unproducible.json'), JSON.stringify(unproducible, null, 2));
+  artifacts.push(await fileMeta(join(outDir, 'unproducible.json')));
+  if (unproducible.count) dim(`${unproducible.count} things on this page cannot be reproduced from the capture`);
+  if (perElement.length) dim(`${perElement.length} of them pinned to individual elements, with screenshots`);
+
+  // A WebGL hero or a video is not only a rendering problem, it is a motion
+  // problem too. Carried here as well as in unproducible.json so a consumer
+  // reading motion.json learns its coverage is incomplete.
+  motion.unreproducible = perElement.map((e) => ({ selector: e.selector, reason: e.reason }));
+  await writeFile(join(outDir, 'motion.json'), JSON.stringify(motion, null, 2));
+  artifacts.push(await fileMeta(join(outDir, 'motion.json')));
+
+  if (args.fidelity) {
+    const artifact = await runFidelityPass({
+      args, outDir, screenshotDir, unreproducibleItems: perElement,
+      attempt, fileMeta, dim,
+    });
+    if (artifact) artifacts.push(artifact);
   }
 
-  // Build motionCapture section
-  let cssAnimData = [];
-  try { cssAnimData = JSON.parse(await readFile(join(outDir, 'animations-css.json'), 'utf8')); } catch {}
-  const motionCapture = {
-    mode: args.sourcemap ? 'full' : (args.scroll || args.interactions || args.hover ? 'standard' : 'quick'),
-    cssNative: cssAnimData, jsSourcemap, jsInferred,
-    visualOnly: canvasInfo.map(c => ({
-      ...c, warning: "Efek ini dirender di canvas/WebGL, tidak ada representasi DOM/CSS yang bisa diekstrak. Referensi ini hanya untuk dilihat manusia sebagai acuan visual, bukan kode yang bisa dipakai langsung."
-    }))
-  };
+  const motionCapture = describeMotion({ args, motion, canvasInfo, jsSourcemap, jsInferred });
 
   await browser.close().catch(() => {});
 
-  const manifest = {
-    url: args.url, host: safeHost(args.url), viewport: args.viewport,
-    timeout: args.timeout, timestamp: new Date().toISOString(),
-    docHeight, artifactCount: artifacts.length, artifacts,
-    videoPath: args.recordVideo ? join(outDir, 'videos', 'scroll.webm') : null,
-    hoverVideoPath: args.recordHoverVideo ? join(outDir, 'videos', 'hover.webm') : null,
-    motionCapture,
-  };
-  await writeFile(join(outDir, 'manifest.json'), JSON.stringify(manifest, null, 2));
+  await writeManifest({
+    outDir, args, primary, docHeight, artifacts, motionCapture, capture, store, interceptor, partials,
+  });
+  // A run that lost a pass is not a run that worked. Exiting 0 here let a caller
+  // chain `design-extractor <url> && next-step` into a directory whose states.json
+  // and interactions.json were never written.
+  if (partials.length) {
+    err(`${partials.length} pass(es) failed - see manifest.json partialFailures`);
+    process.exitCode = 3;
+  }
   ok(`OK: ${outDir} (${artifacts.length} artifacts)`);
 }
 
