@@ -32,13 +32,15 @@ export async function sourcemapPass(net, args, outDir) {
     try {
       let content;
       if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://')) {
-        const resp = await fetch(urlOrPath);
+        // Same-origin by construction, but unbounded: a request that never
+        // answers would hang the pass instead of failing it.
+        const resp = await fetch(urlOrPath, { signal: AbortSignal.timeout(15_000) });
         if (!resp.ok) continue;
         content = await resp.text();
       } else {
         content = await readFile(urlOrPath, 'utf8');
       }
-      const result = await extractFromSourceMap(content, urlOrPath, outDir);
+      const result = await extractFromSourceMap(content, urlOrPath, outDir, { allowPrivate: !!args.allowPrivate });
       if (result.fidelity === 'js-sourcemap') {
         jsSourcemap.push(result);
       } else if (result.fidelity === 'js-inferred') {
