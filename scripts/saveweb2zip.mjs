@@ -4,7 +4,7 @@
 // yauzl is lazily imported inside extractZip so pure-logic tests can import
 // helpers from this file without the dep being installed.
 
-import { mkdir, writeFile, rm, readdir } from 'node:fs/promises';
+import { mkdir, writeFile, rm, readdir, realpath } from 'node:fs/promises';
 import { createWriteStream, mkdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { resolve, join, sep, posix, dirname } from 'node:path';
@@ -293,6 +293,8 @@ async function main() {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+// realpath: npm installs this bin as a .bin symlink, so argv[1] is not the path
+// import.meta.url holds, and the guard was false whenever it was run as a bin.
+if (process.argv[1] && import.meta.url === pathToFileURL(await realpath(process.argv[1])).href) {
   main().catch((e) => { err(e.stack || e.message); process.exit(1); });
 }

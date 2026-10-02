@@ -2,7 +2,7 @@
 // inspect.mjs - Playwright runtime capture for the design-extractor skill.
 // Playwright is lazy-imported so pure helpers unit-test without the browser binary.
 
-import { mkdir, writeFile, stat } from 'node:fs/promises';
+import { mkdir, writeFile, stat, realpath } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
@@ -393,6 +393,7 @@ async function main() {
   ok(`OK: ${outDir} (${artifacts.length} artifacts)`);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// realpath: under `npx` argv[1] is the .bin symlink, not the path import.meta.url holds.
+if (process.argv[1] && import.meta.url === pathToFileURL(await realpath(process.argv[1])).href) {
   main().catch((e) => { err(e.stack || e.message); process.exit(1); });
 }

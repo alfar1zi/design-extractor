@@ -2,7 +2,7 @@
 // cli.mjs - top-level orchestrator: runs inspect (browser capture) -> optional legacy source download.
 
 import { spawn } from 'node:child_process';
-import { mkdir, readdir } from 'node:fs/promises';
+import { mkdir, readdir, realpath } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
@@ -235,6 +235,10 @@ async function main() {
   if (partial) process.exit(3);
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// realpath: npm installs the bins as symlinks under .bin, so argv[1] is the
+// symlink path while import.meta.url is already the resolved one. Comparing the
+// raw paths left this guard false under `npx`, so main() never ran and the
+// process exited 0 having printed nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(await realpath(process.argv[1])).href) {
   main().catch((e) => { err(e.stack || e.message); process.exit(1); });
 }
