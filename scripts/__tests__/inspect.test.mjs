@@ -217,3 +217,46 @@ test('parseArgs --no-scroll overrides --full', () => {
   assert.equal(a.sweep, true);
   assert.equal(a.sourcemap, true);
 });
+
+test('a failing pass is recorded and the capture still lands', async () => {
+  // The behaviour under test is the whole reason this exists: the tree, the
+  // tokens and the DOM are written before the optional passes run, so a pass
+  // that times out on a heavy site must not cost the caller everything already
+  // captured. Asserting on the manifest is what a consumer actually branches on.
+  const { writeManifest } = await import('../manifest.mjs');
+  const dir = await mkdtemp(join(tmpdir(), 'de-partial-'));
+  const args = { url: 'https://x.test/p', viewport: { width: 1280, height: 800 }, timeout: 30, recordVideo: false, recordHoverVideo: false };
+  const store = { missing: [], redirects: [], get: () => ({ rel: 'index.html' }) };
+
+  await writeManifest({
+    outDir: dir, args,
+    primary: { settle: 1234 }, docHeight: 2000, artifacts: [{ path: 'x.json', size: 10 }],
+    motionCapture: { ok: true }, capture: { entries: 3, bytes: 100 },
+    store, interceptor: { blockedCount: () => 0, entryUrl: () => args.url },
+    partials: [{ pass: 'interactions', error: 'page.goto: Timeout 30000ms exceeded.' }],
+  });
+
+  const manifest = JSON.parse(await (await import('node:fs/promises')).readFile(join(dir, 'manifest.json'), 'utf8'));
+  assert.deepEqual(manifest.partialFailures, [
+    { pass: 'interactions', error: 'page.goto: Timeout 30000ms exceeded.' },
+  ]);
+  assert.equal(manifest.artifactCount, 1, 'the artifacts already captured are still listed');
+});
+
+test('a clean run leaves partialFailures out entirely', async () => {
+  const { writeManifest } = await import('../manifest.mjs');
+  const dir = await mkdtemp(join(tmpdir(), 'de-clean-'));
+  const args = { url: 'https://x.test/p', viewport: { width: 1280, height: 800 }, timeout: 30, recordVideo: false, recordHoverVideo: false };
+  await writeManifest({
+    outDir: dir, args,
+    primary: { settle: 1 }, docHeight: 1, artifacts: [],
+    motionCapture: {}, capture: { entries: 0, bytes: 0 },
+    store: { missing: [], redirects: [], get: () => null },
+    interceptor: { blockedCount: () => 0, entryUrl: () => args.url },
+    partials: [],
+  });
+
+  const manifest = JSON.parse(await (await import('node:fs/promises')).readFile(join(dir, 'manifest.json'), 'utf8'));
+  // An empty array would read as "nothing ran"; absence reads as "nothing broke".
+  assert.equal('partialFailures' in manifest, false);
+});
