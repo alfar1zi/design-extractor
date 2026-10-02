@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// cli.mjs - top-level orchestrator: runs find (optional) -> save -> inspect -> REFERENCE.md stub.
+// cli.mjs - top-level orchestrator: runs inspect (browser capture) -> optional legacy source download.
 
 import { spawn } from 'node:child_process';
-import { mkdir, writeFile, readdir, stat } from 'node:fs/promises';
+import { mkdir, readdir } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
@@ -13,11 +13,17 @@ const DEFAULT_TIMEOUT = 30;
 // ---- pure helpers (exported for tests) ----
 
 export function parseArgs(argv) {
-  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, sweep: true, skipSave: false, skipInspect: false, allowPrivate: false, help: false, sourcemap: false };
+  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, sweep: true, states: true, skipSave: false, skipInspect: false, legacySource: false, allowPrivate: false, help: false, sourcemap: false, targets: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
     switch (a) {
+      case '--target': {
+        const val = (next() || '').trim();
+        if (!val) throw new Error('--target needs a CSS selector, e.g. --target ".pricing-card"');
+        out.targets.push(val);
+        break;
+      }
       case '--out': out.outDir = next(); break;
       case '--viewport': {
         const val = next();
@@ -29,30 +35,39 @@ export function parseArgs(argv) {
       case '--no-scroll': out.scroll = false; break;
       case '--no-interactions': out.interactions = false; break;
       case '--no-sweep': out.sweep = false; break;
+      case '--no-states': out.states = false; break;
       case '--skip-save': out.skipSave = true; break;
       case '--skip-inspect': out.skipInspect = true; break;
+      case '--legacy-source': out.legacySource = true; break;
       case '--allow-private': out.allowPrivate = true; break;
       case '-h': case '--help': out.help = true; break;
       case '--quick':
         out.scroll = false;
         out.interactions = false;
         out.sweep = false;
+        out.states = false;
         out.sourcemap = false;
         break;
       case '--full':
         out.scroll = true;
         out.interactions = true;
         out.sweep = true;
+        out.states = true;
         out.sourcemap = true;
         break;
       case '--standard':
         // default, no change
         break;
+      case '--fidelity': out.fidelity = next(); break;
       case '--sourcemap':
         out.sourcemap = true;
         break;
       default:
-        if (out.url) throw new Error(`unknown flag: ${a}`);
+        // A token starting with `-` is a flag, always. Falling through to `out.url`
+        // instead made `--site-dir /tmp/x` fail with "unknown flag: /tmp/x", naming
+        // the value the user passed rather than the flag they mistyped.
+        if (a.startsWith('-')) throw new Error(`unknown flag: ${a}`);
+        if (out.url) throw new Error(`unexpected argument: ${a} (the url is already "${out.url}")`);
         out.url = a;
     }
   }
@@ -77,57 +92,29 @@ export async function validateUrl(rawUrl, opts = {}) {
 
 export function buildChildArgs(opts) {
   const args = [];
-  if (!opts.skipSave) {
+  // The save step POSTs the target URL to a third-party copier, so it is opt-in only.
+  if (opts.legacySource && !opts.skipSave) {
     const saveArgs = ['--url', opts.url, '--out', join(opts.out, 'site')];
     if (opts.allowPrivate) saveArgs.push('--allow-private');
     args.push(['save', saveArgs]);
   }
   if (!opts.skipInspect) {
     const inspect = ['--url', opts.url, '--out', join(opts.out, 'live'), '--viewport', opts.viewport, '--timeout', String(opts.timeout)];
-    // Only pass --site-dir when save also runs (orchestrator path); the save step extracts to <opts.out>/site.
-    if (!opts.skipSave) inspect.push('--site-dir', join(opts.out, 'site'));
+    // Only pass --site-dir when the legacy source download actually ran.
+    if (opts.legacySource && !opts.skipSave) inspect.push('--site-dir', join(opts.out, 'site'));
     if (!opts.scroll) inspect.push('--no-scroll');
     if (!opts.interactions) inspect.push('--no-interactions');
     if (!opts.sweep) inspect.push('--no-sweep');
+    if (!opts.states) inspect.push('--no-states');
     if (opts.allowPrivate) inspect.push('--allow-private');
+    if (opts.fidelity) inspect.push('--fidelity', opts.fidelity);
     if (opts.sourcemap) inspect.push('--sourcemap');
+    for (const t of opts.targets || []) inspect.push('--target', t);
     args.push(['inspect', inspect]);
   }
   return args;
 }
 
-export function buildReferenceStub(ctx) {
-  const { url, host, sourceDir, liveDir, viewport, timestamp } = ctx;
-  return `# Reference: <${host}> by <owner>
-Captured: ${timestamp} | URL: ${url} | Viewport: ${viewport}
-Source: ${sourceDir} | Live: ${liveDir}
-
-## 1. Design read
-<one tagline: what the design actually is>
-
-## 2. Design system
-- Palette, Type, Spacing, Radius, Shadow, Breakpoints: <extract from CSS vars / Tailwind config>
-
-## 3. Components
-| name | source (file + selector) | behavior |
-| --- | --- | --- |
-| <component> | <path> | <states, hover, motion> |
-
-## 4. Layout map
-<section-by-section anatomy, plus breakpoint behavior>
-
-## 5. Animations
-| trigger | effect | easing | timing |
-| --- | --- | --- | --- |
-| <event> | <what moves> | <curve> | <ms> |
-
-## 6. Assets
-<images / fonts / icons with copyable paths under ${sourceDir}/>
-
-## 7. What to steal 1:1
-<exact CSS/JS hunks, exact copy, exact images to lift 1:1>
-`;
-}
 
 function defaultOutDir(url, now = new Date()) {
   let host = 'site';
@@ -175,7 +162,7 @@ const dim  = (m) => out(wrap('90', m));
 const ok   = (m) => out(wrap('32', m));
 const head = (m) => out(wrap('33', m));
 
-const HELP = `design-extractor -- full reference-extraction orchestrator
+const HELP = `design-extractor -- website clone engine
 
 Usage: design-extractor <url> [options]
 
@@ -187,15 +174,21 @@ Options:
   --quick               preset: disable all passes (scroll, interactions, sweep); sourcemap off
   --standard            preset: default behavior (scroll, interactions, sweep on; sourcemap off)
   --full                preset: enable all passes + sourcemap extraction
+  --target <css>        clone one element and scope the analysis to it; repeatable
+  --sourcemap           extract original function names from JS source maps
   --no-scroll           skip scroll screenshot pass
   --no-interactions     skip clickable interaction pass
   --no-sweep            skip tablet+mobile viewport sweep
+  --fidelity <dir>      score a replica directory against the original
+  --no-states           skip hover/focus/checked state capture
+  --legacy-source       also POST the target URL to copier.saveweb2zip.com (off by default)
   --skip-save           skip source download step
   --skip-inspect        skip browser inspect step
   --allow-private       allow private/loopback URLs (off by default; SSRF guard)
   -h, --help            show this help
 
-Steps: save -> inspect -> REFERENCE.md
+Steps: inspect (browser capture; writes the executable artifacts).
+       saveweb2zip only runs with --legacy-source.
 `;
 
 // ---- main ----
@@ -210,32 +203,36 @@ async function main() {
 
   const outDir = args.outDir ? resolve(args.outDir) : defaultOutDir(args.url);
   await mkdir(outDir, { recursive: true });
-  const host = new URL(args.url).host;
   info(`URL: ${args.url}`);
   dim(`OutDir: ${outDir}`);
 
+  let partial = false;
   for (const [name, cargs] of buildChildArgs({ out: outDir, ...args })) {
     head(`\n=== ${name} ===`);
     const r = await runChild(name === 'save' ? 'saveweb2zip.mjs' : 'inspect.mjs', cargs);
-    if (r.code !== 0) {
+    // 3 is the child's "captured, but a pass failed" code. The tree is on disk
+    // and usable, so the output is still reported; the distinct exit lets a
+    // caller tell a partial capture from a clean one without parsing stdout.
+    if (r.code === 3) {
+      err(`PARTIAL at ${name}: at least one pass failed - see live/manifest.json partialFailures`);
+      partial = true;
+    } else if (r.code !== 0) {
       err(`FAILED at ${name} (exit ${r.code})`);
-      if (name === 'save') dim('hint: inspect without source is half the value. Fix the download or use --skip-save explicitly.');
+      if (name === 'save') dim('hint: the browser capture is the primary artifact; the copier download is optional and can be skipped with --skip-save.');
       process.exit(1);
     }
   }
 
-  const sourceDir = join(outDir, 'site');
   const liveDir = join(outDir, 'live');
-  const refDoc = join(outDir, 'REFERENCE.md');
-  await writeFile(refDoc, buildReferenceStub({ url: args.url, host, outDir, sourceDir, liveDir, viewport: args.viewport, timestamp: new Date().toISOString() }), 'utf8');
-  dim(`Reference stub: ${refDoc}`);
 
-  const [files, srcN, liveN] = await Promise.all([countFiles(outDir), countFiles(sourceDir), countFiles(liveDir)]);
+  const [files, liveN] = await Promise.all([countFiles(outDir), countFiles(liveDir)]);
   ok(`OK: ${outDir}`);
-  dim(`  source:    ${sourceDir} (${srcN} files)`);
   dim(`  live:      ${liveDir} (${liveN} files)`);
-  dim(`  reference: ${refDoc}`);
   dim(`  total:     ${files} files`);
+  const names = await readdir(liveDir).catch(() => []);
+  const data = names.filter((f) => f.endsWith('.json') && f !== 'manifest.json').sort();
+  if (data.length) dim(`  data:      ${data.join('  ')}`);
+  if (partial) process.exit(3);
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
