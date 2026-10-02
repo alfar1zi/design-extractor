@@ -14,7 +14,7 @@ license: MIT
 # design-extractor: 1:1 Website Reference Capture
 
 > Goal: faithful reference. No assumptions. See the files AND see the live page
-> before anything is reused. Screenshots alone are NOT enough — this skill extracts
+> before anything is reused. Screenshots alone are NOT enough - this skill extracts
 > the real source, reads it, then watches it move.
 
 ---
@@ -27,9 +27,9 @@ Use when:
 - Teardown for a specific site the user names or picks from a short list.
 
 Do NOT use when:
-- Single-page text read where the user only wants the content — use `webfetch`.
-- One-off documentation lookup — use `webfetch` or a search tool.
-- Screenshot-only mood board with no source motion — that's a screenshot tool, not this skill. This skill explicitly exists to fix the "PNG trap" where motion, interaction, breakpoints, and source architecture get lost.
+- Single-page text read where the user only wants the content - use `webfetch`.
+- One-off documentation lookup - use `webfetch` or a search tool.
+- Screenshot-only mood board with no source motion - that's a screenshot tool, not this skill. This skill explicitly exists to fix the "PNG trap" where motion, interaction, breakpoints, and source architecture get lost.
 
 Distinction from peers:
 - `webfetch`: text from one URL, no source, no motion.
@@ -51,7 +51,7 @@ A screenshot covers neither signal. That is the trap this skill exists to fix.
 
 ---
 
-## 3. Step 0 — Discover (optional)
+## 3. Step 0 - Discover (optional)
 
 When the user has no specific URL, generate 3 to 5 candidate sites:
 
@@ -65,9 +65,9 @@ Filter the results: drop template-marketplace spam, drop aggregator pages, keep 
 
 ---
 
-## 4. Step 1 — Download the real website
+## 4. Step 1 - Download the real website
 
-Primary path — saveweb2zip (server-side copy, full assets, zipped):
+Primary path - saveweb2zip (server-side copy, full assets, zipped):
 
 ```bash
 npx design-extractor-save https://target.example --out ./refs/target --rename-assets
@@ -86,25 +86,25 @@ Automatic fallback. If saveweb2zip retries exhaust, `downloadSiteWithFallback` a
 
 **SSRF Protection**: All network paths run a safety check to block local/private IP ranges. Pass `--allow-private` to permit loopback or private targets. Note that `assertSafeUrl` validates at check time only, so DNS rebinding between check and connect is theoretically possible. Pair with egress policy for high-trust environments.
 
-Extract the output/zip into `./refs/target/site/` and keep the folder. This folder IS the reference artifact — never delete it mid-analysis.
+Extract the output/zip into `./refs/target/site/` and keep the folder. This folder IS the reference artifact - never delete it mid-analysis.
 
 ---
 
-## 5. Step 2 — Deep-read the source (static signal)
+## 5. Step 2 - Deep-read the source (static signal)
 
 Walk the extracted tree and extract the design system before judging visuals.
 
 1. Entry point. Open the main HTML file. Note sections, containers, nesting depth, semantic landmarks (`<header>`, `<main>`, `<section>`).
-2. Tokens. Locate CSS variables — search for `:root`, `--`, `variables.css`, `tokens.css`, Tailwind config (`tailwind.config.*`), or theme files. Extract:
+2. Tokens. Locate CSS variables - search for `:root`, `--`, `variables.css`, `tokens.css`, Tailwind config (`tailwind.config.*`), or theme files. Extract:
    - Palette (hex, rgb, oklch, hsl)
    - Type families, sizes, weights, line-heights
    - Spacing scale
    - Radii, shadows, z-index layers
    - Breakpoints
-3. Components. Identify repeated blocks — nav, hero, card, pricing, CTA, footer, modal, accordion. Read the real markup and class names. Record each component's anatomy: grid/flex layout, position stacks, overlays, gradients, clip-path, backdrop-filter.
+3. Components. Identify repeated blocks - nav, hero, card, pricing, CTA, footer, modal, accordion. Read the real markup and class names. Record each component's anatomy: grid/flex layout, position stacks, overlays, gradients, clip-path, backdrop-filter.
 4. Assets. List images, SVG icons (note stroke width, fill rules, viewBox patterns), photos, video, web fonts. Keep their relative paths so they can be reused.
 5. JS / interactions. Note animation libraries (GSAP, motion, framer-motion, vanilla), scroll handlers, hover/click behavior, cursor effects, page-load reveals. Record *what triggers what*.
-6. Meta. Framework (React, Next, Vue, Svelte, static), build tool (Vite, webpack, Astro — read package/lockfile clues), how sections are composed.
+6. Meta. Framework (React, Next, Vue, Svelte, static), build tool (Vite, webpack, Astro - read package/lockfile clues), how sections are composed.
 
 This is the "files say it" half. End the read with an ordered architecture note: `[palette, typescale, spacing, components table, animations, assets]`.
 
@@ -112,9 +112,9 @@ Also check `live/tokens.json` (written by the inspect pass): it holds the resolv
 
 ---
 
-## 6. Step 3 — Watch the live page (live signal)
+## 6. Step 3 - Watch the live page (live signal)
 
-Static source can miss runtime behavior — the page as the user experiences it.
+Static source can miss runtime behavior - the page as the user experiences it.
 
 ### Capture modes
 
@@ -180,7 +180,7 @@ This is the "page as the user experiences it" half.
 
 ---
 
-## 7. Step 4 — Merge into one reference doc
+## 7. Step 4 - Merge into one reference doc
 
 Write a single markdown file per site. Sections, in order:
 
@@ -241,7 +241,7 @@ The folder is the artifact. Hand it to a redesign build or a taste-library intak
 - SPA / JS-render caveat. Static download may hold a shell. Browser pass is mandatory for any client-rendered site.
 - Don't overwrite the reference folder. New renderings get suffixes; source files stay untouched.
 - Copy respect. This skill is for the user's own learning and design study. Translate to a product only what they have rights to or a license for. Flag gated or licensed assets (fonts, stock photos, proprietary code) before reuse.
-- Don't fabricate. If a token, component, or motion can't be confirmed in source or DOM, say so — do not guess.
+- Don't fabricate. If a token, component, or motion can't be confirmed in source or DOM, say so - do not guess.
 
 ---
 
@@ -262,4 +262,4 @@ Requires Node 18+, Playwright Chromium.
 
 ## 11. Companion skill pointer
 
-This skill is the intake for downstream design skills — `impeccable`, `design-taste-frontend`, `design-workflow`. It complements them by producing the faithful reference doc those skills consume; it does not replace them. Run this first to capture the source + motion truth, then hand the `reference.md` to the design workflow.
+This skill is the intake for downstream design skills - `impeccable`, `design-taste-frontend`, `design-workflow`. It complements them by producing the faithful reference doc those skills consume; it does not replace them. Run this first to capture the source + motion truth, then hand the `reference.md` to the design workflow.

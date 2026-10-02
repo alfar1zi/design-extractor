@@ -163,7 +163,7 @@ test('rewriteCss is idempotent: a second pass changes nothing', () => {
 });
 
 // The real pair: a store holding a real page, written to a real tree. A resolver
-// that returns `../cdn.test/i.png` is not a hypothetical — it is what the tree
+// that returns `../cdn.test/i.png` is not a hypothetical - it is what the tree
 // layout used to produce, and it only shows up once the bytes hit the disk.
 function pair(url, opts = {}) {
   const { method = 'GET', resourceType = 'script', isNavigationRequest = false, contentType = 'application/javascript' } = opts;

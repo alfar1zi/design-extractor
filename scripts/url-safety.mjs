@@ -13,7 +13,7 @@ export function isPrivateAddress(addr) {
   if (lower.startsWith('fe80:') || lower.startsWith('fc') || lower.startsWith('fd')) return true;
   // Strip IPv6 zone id
   const bare = lower.split('%')[0];
-  // IPv4-mapped IPv6 (::ffff:127.0.0.1) — extract trailing IPv4
+  // IPv4-mapped IPv6 (::ffff:127.0.0.1) - extract trailing IPv4
   const mapped = bare.match(/^::ffff:([0-9.]+)$/);
   if (mapped) return isPrivateAddress(mapped[1]);
   // IPv4 dotted-quad

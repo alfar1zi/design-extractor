@@ -33,11 +33,11 @@ All numbers from the log files. None estimated.
 
 The current interaction pass uses the Playwright Locator API (`page.locator(INTERACTION_SEL).nth(i)`) so the selector is re-resolved on each action and cannot drift into a stale handle. Before the click loop starts, `dismissOverlays()` clicks common cookie/consent banners so they do not intercept later clicks. Failures are no longer a single "error" string; each entry in `interactions.json` carries a `result` field with one of:
 
-- `ok` — click landed, navigation recorded.
-- `timeout` — click action did not become actionable within the configured timeout (8s). Likely SPA hydration delay.
-- `not-found` — the locator resolved to zero elements at click time (rare under the new API; usually means the page re-rendered between probe and click).
-- `intercepted` — another element was on top of the target (sticky header, modal backdrop, consent overlay that the dismiss pass missed).
-- `error` — anything else (network, navigation, unexpected Playwright exception).
+- `ok` - click landed, navigation recorded.
+- `timeout` - click action did not become actionable within the configured timeout (8s). Likely SPA hydration delay.
+- `not-found` - the locator resolved to zero elements at click time (rare under the new API; usually means the page re-rendered between probe and click).
+- `intercepted` - another element was on top of the target (sticky header, modal backdrop, consent overlay that the dismiss pass missed).
+- `error` - anything else (network, navigation, unexpected Playwright exception).
 
 `interactions.json` and `hover.json` both use this schema.
 

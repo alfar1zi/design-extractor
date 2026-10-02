@@ -100,8 +100,8 @@ export function rewriteHtml(html, { baseUrl, resolver, collect } = {}) {
     // Same-origin references stay byte-identical. A document-relative path loads the
     // same bytes, but the markup is also a program input: bundle runtimes pair
     // chunks by comparing the literal attribute against build-time strings.
-    // Turbopack does exactly that — it matches `getAttribute('src')` against its
-    // '/_next/' prefix plus a hardcoded chunk list — so rewriting to a relative path
+    // Turbopack does exactly that - it matches `getAttribute('src')` against its
+    // '/_next/' prefix plus a hardcoded chunk list - so rewriting to a relative path
     // leaves every chunk unregistered, `hydrateRoot` never fires and the captured
     // page silently never becomes interactive. Authored paths are also correct
     // as-is once the tree's host directory is served as the document root.

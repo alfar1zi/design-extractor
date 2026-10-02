@@ -49,7 +49,7 @@ test('accepts http://example.com/ when DNS resolves to public IP', async () => {
 });
 
 test('accepts http://example.com/ with default resolver (real DNS, may fail in sandboxed envs)', async () => {
-  // Default resolver is the real one. We don't assert success — just no exception thrown synchronously.
+  // Default resolver is the real one. We don't assert success - just no exception thrown synchronously.
   // If the sandbox has no DNS, the test gracefully tolerates the DNS failure.
   try {
     await assertSafeUrl('http://example.com/');
