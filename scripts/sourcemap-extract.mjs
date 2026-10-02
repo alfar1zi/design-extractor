@@ -5,6 +5,8 @@
 import { mkdir, writeFile, readFile, readdir } from 'node:fs/promises';
 import { resolve, join, sep, dirname } from 'node:path';
 import * as acorn from 'acorn';
+import { assertInsideRoot } from './url-tree.mjs';
+import { assertSafeUrl } from './url-safety.mjs';
 
 // Fetch helper with timeout.
 async function fetchWithTimeout(url, timeoutMs = 5000) {
@@ -169,7 +171,7 @@ async function walkFiles(dir, files = []) {
 }
 
 // Extracts original source tree or runs fallback scanner.
-export async function extractFromSourceMap(jsContent, jsUrlOrPath, outDir) {
+export async function extractFromSourceMap(jsContent, jsUrlOrPath, outDir, { allowPrivate = false } = {}) {
   let smUrl = null;
   const lines = jsContent.trim().split('\n');
   for (let i = lines.length - 1; i >= 0; i--) {
@@ -199,10 +201,19 @@ export async function extractFromSourceMap(jsContent, jsUrlOrPath, outDir) {
         const isUrl = jsUrlOrPath.startsWith('http:') || jsUrlOrPath.startsWith('https:');
         let sourcemapContent;
         if (isUrl) {
+          // The comment is written by whoever served the JS, so this URL is
+          // target-controlled input. Without the check it is a blind fetch from
+          // this machine: a target naming a link-local address in its
+          // `sourceMappingURL` reaches it, and the response body is parsed and
+          // written into the output directory.
           const resolvedUrl = new URL(smUrl, jsUrlOrPath).href;
+          await assertSafeUrl(resolvedUrl, { allowPrivate: !!allowPrivate });
           sourcemapContent = await fetchWithTimeout(resolvedUrl, 5000);
         } else {
+          // An absolute `sourceMappingURL` would otherwise read any file the
+          // process can open; the map must live under the tree it came from.
           const localPath = resolve(dirname(jsUrlOrPath), smUrl);
+          assertInsideRoot(dirname(jsUrlOrPath), localPath);
           sourcemapContent = await readFile(localPath, 'utf8');
         }
         sourceMap = JSON.parse(sourcemapContent);
