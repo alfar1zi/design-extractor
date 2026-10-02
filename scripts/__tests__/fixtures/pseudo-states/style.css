@@ -1,0 +1,32 @@
+/* Durations are deliberately not round and not equal to each other, so a value
+   that came back from a transition can be told apart from one that came back
+   from a declaration, and from a default.
+
+   Every rule below styles the element the capture actually reads - the input
+   itself. Styling a sibling would prove nothing: the pass measures the element
+   it forced the state on, so a change one node over is invisible to it. */
+.box {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  background-color: rgb(226, 232, 240);
+  transition: background-color 237ms linear, transform 419ms cubic-bezier(.2, .8, .2, 1);
+}
+
+#news { background-color: rgb(203, 213, 225); }
+
+/* A real transition on the forced state is the whole question: Blink animates a
+   forced pseudo-class the same way it animates a real one, and this file is
+   where that belief is either earned or lost. */
+#terms:checked { background-color: rgb(22, 163, 74); transform: scale(1.08); }
+#news:checked { background-color: rgb(147, 51, 234); transform: scale(1.04); }
+
+.btn {
+  background-color: rgb(100, 116, 139);
+  color: rgb(255, 255, 255);
+  transition: background-color 173ms linear, opacity 311ms linear;
+}
+
+#live:hover { background-color: rgb(15, 23, 42); }
+#gone:disabled { opacity: 0.4; background-color: rgb(148, 163, 184); }

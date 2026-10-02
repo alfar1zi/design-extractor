@@ -1,6 +1,7 @@
 // interaction-pass.mjs - element-level interaction capture using Playwright Locator API.
 // Extracted from inspect.mjs so the orchestrator stays under the AGENTS.md 400-line cap.
 import { join } from 'node:path';
+import { readStyles, readTiming, settleMs, stateEntry, waitForAnimations } from './states.mjs';
 
 export const CLICK_CAP = 50;
 export const INTERACTIVE_CAP = 200;
@@ -61,6 +62,11 @@ const HOVER_FALLBACK_MS = 800;
 // do not blow past 5 minutes on slow SPAs.
 const PER_PAGE_GOTO_MS = 15000;
 
+/** The CLI's --timeout, which is a navigation deadline and not a per-element one. */
+function gotoTimeout(timeoutSec) {
+  return timeoutSec ? timeoutSec * 1000 : PER_PAGE_GOTO_MS;
+}
+
 // Map Playwright error messages to a short result category for interactions.json / hover.json.
 // Returns one of: 'ok', 'timeout', 'not-found', 'intercepted', 'error'.
 export function categorizeError(err) {
@@ -106,9 +112,15 @@ export async function dismissOverlays(page, dispatch) {
   }
 }
 
-async function probeCount(context, url) {
+/** Load and let a SPA hydrate. networkidle hangs on long-poll pages. */
+async function loadPage(page, url, gotoMs) {
+  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: gotoMs });
+  await page.waitForTimeout(800);
+}
+
+async function probeCount(context, url, gotoMs) {
   const probe = await context.newPage();
-  await probe.goto(url, { waitUntil: 'domcontentloaded', timeout: PER_PAGE_GOTO_MS });
+  await probe.goto(url, { waitUntil: 'domcontentloaded', timeout: gotoMs });
   // SPA hydration wait; replaces networkidle which hangs on long-poll pages.
   await probe.waitForTimeout(800);
   const total = await probe.locator(INTERACTION_SEL).count();
@@ -116,18 +128,22 @@ async function probeCount(context, url) {
   return total;
 }
 
-// Fresh page per element + Locator API (re-resolves on each action, no stale handles).
-// Cookie/consent overlays are dismissed before clicking so they do not intercept.
+// One page for the whole sweep, reloaded only when a click actually navigated.
+// The Locator API re-resolves on each action, so there are no stale handles; the
+// reload is what keeps nth=i meaning the same element, because after a
+// navigation the list is a different list entirely. Cookie/consent overlays are
+// dismissed before each click so they do not intercept.
 export async function interactionPass(context, url, timeoutSec, screenshotDir) {
-  const total = await probeCount(context, url);
+  // The caller's --timeout, not a constant. A hardcoded one silently made the
+  // flag do nothing and turned any slow-loading site into a failed capture.
+  const gotoMs = gotoTimeout(timeoutSec);
+  const total = await probeCount(context, url, gotoMs);
   const count = Math.min(total, INTERACTION_CAP);
   const results = [];
-  for (let i = 0; i < count; i++) {
-    const page = await context.newPage();
-    try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: PER_PAGE_GOTO_MS });
-      // SPA hydration wait; replaces networkidle which hangs on long-poll pages.
-      await page.waitForTimeout(800);
+  const page = await context.newPage();
+  try {
+    await loadPage(page, url, gotoMs);
+    for (let i = 0; i < count; i++) {
       await dismissOverlays(page);
 
       const loc = page.locator(INTERACTION_SEL).nth(i);
@@ -142,6 +158,24 @@ export async function interactionPass(context, url, timeoutSec, screenshotDir) {
         }));
       } catch { /* metadata is best-effort */ }
 
+      const handle = await loc.elementHandle().catch(() => null);
+      const before = handle ? await readStyles(handle).catch(() => null) : null;
+      // Focus is captured before the click, because a click navigates and the
+      // element is gone by the time anything could be read back.
+      let focusState = null;
+      if (before) {
+        await loc.focus({ timeout: CLICK_TIMEOUT_MS }).catch(() => {});
+        const focusTiming = settleMs(await readTiming(handle).catch(() => ({})));
+        if (Number.isFinite(focusTiming) && focusTiming > 0) {
+          await waitForAnimations(handle, page, focusTiming);
+        }
+        const focused = await readStyles(handle).catch(() => null);
+        if (focused) {
+          focusState = stateEntry({ selector, state: ':focus', mode: 'real', before, after: focused, timing: focusTiming });
+        }
+        await handle.dispose().catch(() => {});
+      }
+
       const beforeShot = join(screenshotDir, `interaction-${String(i + 1).padStart(2, '0')}-before.png`);
       try { await page.screenshot({ path: beforeShot }); } catch { /* ignore */ }
       const urlBefore = page.url();
@@ -153,30 +187,36 @@ export async function interactionPass(context, url, timeoutSec, screenshotDir) {
       const afterShot = join(screenshotDir, `interaction-${String(i + 1).padStart(2, '0')}-after.png`);
       try { await page.screenshot({ path: afterShot }); } catch { /* ignore */ }
       results.push({
-        index: i + 1, selector, ...meta, navigated,
+        index: i + 1, selector, ...meta, navigated, focusState,
         result: isErr ? categorizeError(clickErr) : 'ok',
         error: isErr ? clickErr.message.split('\n')[0] : null,
         beforeShot, afterShot,
       });
-    } finally {
-      await page.close();
+
+      // Only a real navigation breaks the index-to-element mapping. Reloading
+      // unconditionally would put the pass back to one load per element.
+      if (navigated && i < count - 1) await loadPage(page, url, gotoMs);
     }
+  } finally {
+    await page.close();
   }
   return results;
 }
 
-// Fresh page per element. Hovers each clickable, waits for its CSS transition
-// to complete (read from getComputedStyle), then screenshots before/after.
+// One page for the whole sweep. Hovering never navigates, so a fresh load per
+// element bought nothing and cost a full page load each time -- on a twenty
+// element page that was most of the pass's wall clock spent on navigation.
 export async function hoverPass(context, url, timeoutSec, screenshotDir) {
-  const total = await probeCount(context, url);
+  const gotoMs = gotoTimeout(timeoutSec);
+  const total = await probeCount(context, url, gotoMs);
   const count = Math.min(total, INTERACTION_CAP);
   const results = [];
-  for (let i = 0; i < count; i++) {
-    const page = await context.newPage();
-    try {
-      await page.goto(url, { waitUntil: 'domcontentloaded', timeout: PER_PAGE_GOTO_MS });
-      // SPA hydration wait; replaces networkidle which hangs on long-poll pages.
-      await page.waitForTimeout(800);
+  const page = await context.newPage();
+  try {
+    await loadPage(page, url, gotoMs);
+    for (let i = 0; i < count; i++) {
+      // Dismissed per element, not once: a hover can open a menu that covers the
+      // next target, and a later element behind it would fail for that reason.
       await dismissOverlays(page);
 
       const loc = page.locator(INTERACTION_SEL).nth(i);
@@ -185,31 +225,39 @@ export async function hoverPass(context, url, timeoutSec, screenshotDir) {
       try { await page.screenshot({ path: beforeShot }); } catch { /* ignore */ }
 
       const handle = await loc.elementHandle().catch(() => null);
+      const before = handle ? await readStyles(handle).catch(() => null) : null;
       const hoverErr = await loc.hover({ timeout: CLICK_TIMEOUT_MS }).catch((e) => e);
       const isErr = hoverErr instanceof Error;
-      let transitionMs = HOVER_FALLBACK_MS;
+      let timingMs = 0;
+      let state = null;
       if (!isErr && handle) {
-        try {
-          const ms = await page.evaluate((el) => {
-            const s = getComputedStyle(el);
-            return parseFloat(s.transitionDuration) * 1000 || 0;
-          }, handle);
-          if (Number.isFinite(ms) && ms > 0) transitionMs = ms;
-        } catch { /* keep fallback */ }
-        await page.waitForTimeout(transitionMs);
+        // Read the timing AFTER the hover, so it is the hover state's own timing.
+        // parseFloat on `transition-duration` would take only the first value of
+        // the list and screenshot the element while the slower half still ran.
+        const declared = settleMs(await readTiming(handle).catch(() => ({})));
+        timingMs = Number.isFinite(declared) ? declared : 0;
+        // The wait and the reported timing are different things. An element with
+        // no declared transition still gets time for a JS-driven settle, but it
+        // must not be reported as animating for however long we happened to wait.
+        await waitForAnimations(handle, page, timingMs > 0 ? timingMs : HOVER_FALLBACK_MS);
+        if (before) {
+          const after = await readStyles(handle).catch(() => null);
+          if (after) state = stateEntry({ selector, state: ':hover', mode: 'real', before, after, timing: timingMs });
+        }
+        await handle.dispose().catch(() => {});
       }
       const afterShot = join(screenshotDir, `hover-${String(i + 1).padStart(2, '0')}-after.png`);
       try { await page.screenshot({ path: afterShot }); } catch { /* ignore */ }
 
       results.push({
-        index: i + 1, selector, type: 'hover', transitionMs,
+        index: i + 1, selector, type: 'hover', transitionMs: timingMs, state,
         result: isErr ? categorizeError(hoverErr) : 'ok',
         error: isErr ? hoverErr.message.split('\n')[0] : null,
         beforeShot, afterShot,
       });
-    } finally {
-      await page.close();
     }
+  } finally {
+    await page.close();
   }
   return results;
 }
