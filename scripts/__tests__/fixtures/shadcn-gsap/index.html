@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fixture — shadcn tokens driving GSAP scroll motion</title>
+<link rel="stylesheet" href="./tokens.css">
+<link rel="stylesheet" href="./app.css">
+</head>
+<body>
+  <header class="site-header">
+    <span class="brand">NORTHWIND</span>
+    <nav class="nav">
+      <a href="#pricing">Pricing</a>
+      <a href="#faq">FAQ</a>
+    </nav>
+    <button class="btn btn-primary" id="cta">Get started</button>
+  </header>
+
+  <section class="hero">
+    <h1 class="hero__title">Ship the clone, not the approximation</h1>
+    <p class="hero__sub">A fixture whose every colour, radius and spacing is a token, and whose motion is driven imperatively by a script that never registers a CSS animation.</p>
+    <div class="hero__cards" id="cards">
+      <article class="card">
+        <h3>Tokens</h3>
+        <p>Shadcn-shaped custom properties, consumed by type.</p>
+      </article>
+      <article class="card">
+        <h3>Motion</h3>
+        <p>Scroll-linked transforms written as inline styles.</p>
+      </article>
+      <article class="card">
+        <h3>Evidence</h3>
+        <p>Rendered twice, diffed, reported as a number.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="band" id="band">
+    <div class="band__bg"></div>
+    <h2 class="band__title">Scroll-linked</h2>
+    <p class="band__body">This background is moved by a scroll listener, not by a keyframe rule. Nothing in <code>document.getAnimations()</code> reports it.</p>
+  </section>
+
+  <section class="pricing" id="pricing">
+    <div class="card card--wide">
+      <h3>Starter</h3>
+      <p class="price">$0<span>/mo</span></p>
+      <ul class="ticks">
+        <li>One page</li>
+        <li>One viewport</li>
+      </ul>
+    </div>
+    <div class="card card--wide card--accent">
+      <h3>Studio</h3>
+      <p class="price">$29<span>/mo</span></p>
+      <ul class="ticks">
+        <li>Full site tree</li>
+        <li>Motion sampling</li>
+      </ul>
+    </div>
+  </section>
+
+  <section class="faq" id="faq">
+    <h2>Frequently asked</h2>
+    <details><summary>Does this page register CSS animations?</summary><p>No. The motion below is written to inline style attributes by a scroll listener.</p></details>
+    <details><summary>Are the colours hard-coded?</summary><p>No. Every value is a <code>var(--token)</code>.</p></details>
+  </section>
+
+  <footer class="site-footer">
+    <p>Fixture for offline-replica fidelity measurement.</p>
+  </footer>
+
+  <!-- Closed shadow root. The plan assumed CDP's DOM.getDocument({pierce:true})
+       crosses closed roots; that assumption has never been run. -->
+  <div id="closed-host"></div>
+
+  <script src="./motion.js"></script>
+</body>
+</html>
