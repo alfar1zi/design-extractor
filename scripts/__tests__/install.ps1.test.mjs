@@ -25,7 +25,6 @@ test('install.ps1 references npm test', () => {
 });
 
 test('install.ps1 prints the four bin command names', () => {
-  assert.match(installPs1, /design-extractor-find/);
   assert.match(installPs1, /design-extractor-save/);
   assert.match(installPs1, /design-extractor-inspect/);
   assert.match(installPs1, /design-extractor <url>/);

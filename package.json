@@ -6,11 +6,10 @@
   "bin": {
     "design-extractor": "./scripts/cli.mjs",
     "design-extractor-save": "./scripts/saveweb2zip.mjs",
-    "design-extractor-find": "./scripts/find-refs.mjs",
     "design-extractor-inspect": "./scripts/inspect.mjs"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "scripts": {
     "install:browsers": "playwright install chromium",
@@ -20,6 +19,7 @@
   },
   "dependencies": {
     "acorn": "^8.18.0",
+    "looks-same": "^10.0.1",
     "playwright": "^1.48.0",
     "source-map": "^0.8.0",
     "undici": "^6.0.0",

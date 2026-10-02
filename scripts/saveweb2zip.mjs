@@ -211,7 +211,8 @@ export async function downloadSiteWithFallback(url, outDir, opts = {}) {
     // Fallback 2: single-file-cli
     try {
       const out = join(archiveDir, 'single-file.html');
-      await runFallbackCli('npx', ['--yes', 'single-file-cli', url, '--output-file', out], out);
+      // single-file-cli takes the output as a positional; there is no --output-file option.
+      await runFallbackCli('npx', ['--yes', 'single-file-cli', url, out], out);
       info(`fallback OK: single-file-cli -> ${out}`);
       return { backend: 'single-file-cli', outFile: out };
     } catch (e) {

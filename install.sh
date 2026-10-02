@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # install.sh - one-shot setup for design-extractor on macOS / Linux.
-# Idempotent. Verifies Node 18+, runs npm install, downloads Chromium, runs tests.
+# Idempotent. Verifies Node 20+, runs npm install, downloads Chromium, runs tests.
 
 set -e
 
@@ -15,15 +15,17 @@ ok()   { say "${C_OK}$*${C_RST}"; }
 dim()  { say "${C_DIM}$*${C_RST}"; }
 fail() { say "${C_ERR}$*${C_RST}" >&2; exit 1; }
 
-# Step 1: verify Node 18+.
+# Step 1: verify Node 20+. This must match package.json `engines.node`; the
+# resolved playwright requires it, and a Node 18 install fails later with a
+# stack trace that says nothing about the real cause.
 NODE_RAW="$(node -p "process.versions.node" 2>/dev/null || true)"
-[ -n "$NODE_RAW" ] || fail "Node not found on PATH. Install Node 18+ from https://nodejs.org/"
+[ -n "$NODE_RAW" ] || fail "Node not found on PATH. Install Node 20+ from https://nodejs.org/"
 NODE_MAJOR="$(printf "%s" "$NODE_RAW" | cut -d. -f1)"
 case "$NODE_MAJOR" in
   ''|*[!0-9]*) fail "Could not parse Node version: '$NODE_RAW'";;
 esac
-[ "$NODE_MAJOR" -ge 18 ] || fail "Node $NODE_RAW found. Need 18.0.0 or newer. Get it at https://nodejs.org/"
-ok "Node $NODE_RAW (>= 18)"
+[ "$NODE_MAJOR" -ge 20 ] || fail "Node $NODE_RAW found. Need 20.0.0 or newer. Get it at https://nodejs.org/"
+ok "Node $NODE_RAW (>= 20)"
 
 # Resolve repo root (directory containing this script).
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
@@ -47,7 +49,6 @@ ok ""
 ok "=========================================="
 ok "design-extractor installed."
 ok "Try these commands:"
-ok "  npx design-extractor-find --prompt \"...\" --count 5"
 ok "  npx design-extractor-save --url https://... --out ./refs/foo"
 ok "  npx design-extractor-inspect --url https://... --out ./refs/foo/live --viewport 1440x900"
 ok "  npx design-extractor <url>"

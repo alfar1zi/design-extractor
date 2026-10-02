@@ -25,7 +25,6 @@ test('install.sh references npm test or npm run test', () => {
 });
 
 test('install.sh prints the four bin command names', () => {
-  assert.match(installSh, /design-extractor-find/);
   assert.match(installSh, /design-extractor-save/);
   assert.match(installSh, /design-extractor-inspect/);
   assert.match(installSh, /design-extractor <url>/);
