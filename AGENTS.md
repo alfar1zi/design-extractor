@@ -2,14 +2,14 @@
 
 ## Project
 
-`design-extractor` is a Node.js ESM skill and CLI for capturing 1:1 design references from live websites. It downloads real source files (HTML/CSS/JS/images), drives a Playwright browser to record scroll, interactions, and breakpoints, and writes a single merged reference doc. Bins: `design-extractor`, `design-extractor-save`, `design-extractor-find`, `design-extractor-inspect`. Loads into Claude Code, OpenCode, Hermes, and Cursor via the `SKILL.md` frontmatter.
+`design-extractor` is a Node.js ESM skill and CLI for capturing 1:1 design references from live websites. It downloads real source files (HTML/CSS/JS/images), drives a Playwright browser to record scroll, interactions, and breakpoints, and writes a single merged reference doc. Bins: `design-extractor`, `design-extractor-save`, `design-extractor-inspect`. Loads into Claude Code, OpenCode, Hermes, and Cursor via the `SKILL.md` frontmatter.
 
 ---
 
 ## Setup
 
 ```bash
-node --version          # must be 18+
+node --version          # must be 20+
 npm install
 npm run install:browsers   # downloads Playwright Chromium
 ```
@@ -23,7 +23,7 @@ A one-shot installer also exists: `install.sh` (macOS/Linux) and `install.ps1` (
 - ESM only (`"type": "module"`). No CommonJS.
 - No classes. Plain functions and top-level `await` inside `async main()`.
 - Hand-rolled arg parsing. No `commander`, no `yargs`.
-- Native `fetch` (Node 18+). No `axios`, no `node-fetch`.
+- Native `fetch` (Node 20+). No `axios`, no `node-fetch`.
 - Lazy-import heavy deps (`playwright`, `yauzl`) so unit tests can import pure helpers without the browsers installed.
 - ANSI color only when `process.stdout.isTTY && !process.env.NO_COLOR`. No `chalk`.
 - Shebang `#!/usr/bin/env node` on every CLI script.
@@ -54,13 +54,28 @@ design-extractor/
   install.sh            one-shot installer, macOS/Linux
   install.ps1           one-shot installer, Windows
   scripts/
-    cli.mjs             top-level orchestrator
-    saveweb2zip.mjs     download via saveweb2zip API
-    find-refs.mjs       discover candidate URLs
-    inspect.mjs         Playwright runtime capture
-    scan-libs.mjs       animation library fingerprint scan
-    __tests__/          unit tests, one file per script
-  examples/             tracked log files from real end-to-end runs
+    cli.mjs                 top-level orchestrator, flag parsing, child spawn
+    inspect.mjs             Playwright runtime capture: tree, motion, tokens, components
+    saveweb2zip.mjs         legacy third-party copier, opt-in only via --legacy-source
+    capture-store.mjs       bounded response store, records every body it cannot take
+    request-intercept.mjs   route interception; re-checks every redirect hop for SSRF
+    url-safety.mjs          private/link-local address guard
+    url-tree.mjs            URL -> collision-free path under the capture root
+    rewrite.mjs             markup / CSS / JS reference rewriting
+    tree-writer.mjs         writes the offline tree under the capture root
+    cdp.mjs                 Chrome DevTools Protocol session and style helpers
+    motion-sampler.mjs      MutationObserver style sampler; sees what getAnimations cannot
+    motion-pass.mjs         merges every motion source into motion.json
+    components.mjs          framework-reported and DOM-inferred components, kept separate
+    tokens.mjs              DTCG tokens from resolved custom properties
+    states.mjs              interaction-state style read/diff helpers
+    unreproducible.mjs      names what this capture cannot rebuild, and why
+    fidelity.mjs            image comparison for a rebuild
+    record-pass.mjs        the one pass that watches a page during load
+    target.mjs              --target resolution, crops and interaction states
+    interaction-pass.mjs    click and hover screenshot pairs
+    sourcemap-pass.mjs      source-map driven animation recovery (--full)
+    __tests__/              unit tests, one file per script
 ```
 
 Generated directories (`refs/`, `out/`, `.cache/`, `playwright-report/`, `node_modules/`) are gitignored. Do not commit them.
@@ -96,7 +111,7 @@ Generated directories (`refs/`, `out/`, `.cache/`, `playwright-report/`, `node_m
 
 ## Out of scope
 
-- Do not add new dependencies without justification in the PR description. Node 18+ stdlib covers most of what this skill needs; existing deps cover the rest.
+- Do not add new dependencies without justification in the PR description. Node 20+ stdlib covers most of what this skill needs; existing deps cover the rest.
 - Do not add a build step. The CLI runs directly from source.
 - Do not add a coverage threshold or CI runner unless the maintainer asks.
 - Do not add more than one new `.md` file at the repo root without a clear reason. Each file needs an active maintainer to stay accurate.
