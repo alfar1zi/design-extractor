@@ -251,6 +251,22 @@ async function main() {
   try {
     primary = await recordPass(context, args.url, args.viewport, args.timeout, outDir, args.targets, err, store);
   } catch (e) {
+    // A refused main-frame navigation is a useful security result, not an empty
+    // directory. The redirect smoke gate and a human diagnosing a blocked target
+    // both need the exact hop and zero captured entries after the process exits.
+    // Write this before closing the browser: the interceptor owns the evidence
+    // while the context is alive, and no later pass can reconstruct it.
+    try {
+      await writeFile(join(outDir, 'capture.json'), JSON.stringify({
+        ...store.captureStats(),
+        blocked: interceptor.blocked(),
+        tree: { written: 0, bytes: 0, unrewritten: 0 },
+        error: e.message,
+      }, null, 2));
+    } catch (writeError) {
+      err(`Could not write capture failure evidence: ${writeError.message}`);
+    }
+    await interceptor.uninstall().catch(() => {});
     await browser.close().catch(() => {});
     err(`Primary capture failed: ${e.message}`);
     process.exit(1);

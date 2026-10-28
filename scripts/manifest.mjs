@@ -1,7 +1,7 @@
 // manifest.mjs - assemble manifest.json.
 //
-// Kept out of inspect.mjs so the orchestrator stays inside the AGENTS.md
-// 400-line cap. The shape is a contract: every field here is read by the skill
+// Kept out of inspect.mjs so the orchestrator stays readable. The shape is a
+// contract: every field here is read by the skill
 // and by anything comparing one capture against another, so renaming a field is
 // a breaking change and adding one is not.
 

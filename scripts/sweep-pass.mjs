@@ -1,7 +1,7 @@
 // sweep-pass.mjs - capture the page at tablet and mobile widths.
 //
-// Extracted from inspect.mjs only to keep that file inside the AGENTS.md
-// 400-line cap. Each viewport gets its own context: reusing one would carry the
+// Extracted from inspect.mjs to keep the orchestrator readable. Each viewport
+// gets its own context: reusing one would carry the
 // desktop session's cookies, cache and localStorage into the narrower renders
 // and quietly change what is on screen.
 

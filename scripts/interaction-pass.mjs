@@ -1,5 +1,5 @@
 // interaction-pass.mjs - element-level interaction capture using Playwright Locator API.
-// Extracted from inspect.mjs so the orchestrator stays under the AGENTS.md 400-line cap.
+// Split out of inspect.mjs so the orchestrator stays readable.
 import { join } from 'node:path';
 import { readStyles, readTiming, settleMs, stateEntry, waitForAnimations } from './states.mjs';
 
