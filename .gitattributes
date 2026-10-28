@@ -1,4 +1,8 @@
 * text=auto eol=lf
+# The evidence logs are read as text on GitHub. `text=auto` already normalises
+# them, but naming the type keeps a tool that writes UTF-16 from turning the
+# repository's proof into a binary blob again.
+*.log text eol=lf
 *.png binary
 *.jpg binary
 *.jpeg binary
