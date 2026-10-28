@@ -2,15 +2,35 @@
 // The point of the tree is that it opens with the network switched off.
 
 import { mkdir, writeFile, rename, rm, readdir, lstat } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
+import { basename, dirname, join } from 'node:path';
 import { rewriteCss, rewriteHtml, rewriteJs } from './rewrite.mjs';
 import { assertInsideRoot } from './url-tree.mjs';
 import { treeResolver } from './request-intercept.mjs';
 
 const REWRITERS = { html: rewriteHtml, css: rewriteCss, js: rewriteJs };
 
-/** Written on every successful prepare; its absence is what marks a foreign directory. */
+/** Base name of the ownership record written beside a tree directory. */
 export const TREE_MARKER = '.design-extractor-tree';
+
+/**
+ * Path of the file that records who wrote a tree directory.
+ *
+ * Deliberately a sibling, not an entry inside the tree: the tree is what a
+ * consumer serves and enumerates, and it must be exactly the capture. A marker
+ * inside it showed up as the first entry of `readdir(tree)`, which is how the
+ * fidelity gate picks the host directory to serve, so the gate started loading a
+ * directory listing as the page.
+ */
+export function treeMarkerPath(outDir) {
+  const parent = dirname(outDir.replace(/[\\/]+$/, ''));
+  return join(parent, `${TREE_MARKER}.${basename(outDir)}`);
+}
+
+/** True when a previous run of this tool created `outDir`. */
+async function isOwnedTree(outDir) {
+  try { await lstat(treeMarkerPath(outDir)); return true; }
+  catch { return false; }
+}
 
 /**
  * Throw when clearing `outDir` would delete something this tool did not write.
@@ -34,25 +54,27 @@ export async function assertTreeDirClearable(outDir, { force = false } = {}) {
   if (info.isSymbolicLink()) return true;
   if (!info.isDirectory()) throw new Error(`tree: ${outDir} exists and is not a directory`);
   const names = await readdir(outDir);
-  const foreign = names.filter((n) => n !== TREE_MARKER);
-  if (!names.includes(TREE_MARKER) && foreign.length > 0 && !force) {
+  if (names.length > 0 && !(await isOwnedTree(outDir)) && !force) {
     throw new Error(
-      `tree: refusing to delete ${outDir}: it holds ${foreign.length} `
-      + `entries this tool did not write and no ${TREE_MARKER} marker. `
-      + 'Pass --force-tree to overwrite it anyway.',
+      `tree: refusing to delete ${outDir}: it holds ${names.length} `
+      + 'entries this tool did not write. Pass --force-tree to overwrite it anyway.',
     );
   }
   return true;
 }
 
-/** Clear and re-create the tree directory, then stamp it as ours. */
+/** Clear and re-create the tree directory, then record the output as ours. */
 export async function prepareTreeDir(outDir, { force = false } = {}) {
   await assertTreeDirClearable(outDir, { force });
   let info = null;
   try { info = await lstat(outDir); } catch { /* absent */ }
-  if (info) await rm(outDir, { recursive: true, force: true });
+  if (info && info.isDirectory() && !info.isSymbolicLink()) {
+    await rm(outDir, { recursive: true, force: true });
+  } else if (info) {
+    await rm(outDir, { force: true });
+  }
   await mkdir(outDir, { recursive: true });
-  await writeFile(join(outDir, TREE_MARKER), 'design-extractor capture tree - generated, safe to delete\n');
+  await writeFile(treeMarkerPath(outDir), 'design-extractor capture tree - generated, safe to delete\n');
   return outDir;
 }
 

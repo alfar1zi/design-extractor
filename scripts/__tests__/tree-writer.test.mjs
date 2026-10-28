@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { createCaptureStore } from '../capture-store.mjs';
-import { writeTree, TREE_MARKER } from '../tree-writer.mjs';
+import { writeTree, TREE_MARKER, treeMarkerPath } from '../tree-writer.mjs';
 
 function put(store, url, body, contentType) {
   store.put(
@@ -52,6 +52,21 @@ test("a second run does not leave the first one's files behind", async (t) => {
 
   assert.ok(existsSync(join(dir, 'x.test', 'new-only.html')));
   assert.equal(existsSync(join(dir, 'x.test', 'old-only.html')), false, 'the previous run left a file nobody asked for');
+});
+
+test('the tree directory holds the capture and nothing this tool added', async (t) => {
+  // A consumer enumerates this directory to find the captured host, and one that
+  // is served as a site must not publish a tool's own bookkeeping. The ownership
+  // record lives beside the directory for exactly this reason.
+  const dir = await tempDir(t);
+  const store = createCaptureStore();
+  put(store, 'https://x.test/index.html', '<h1>hi</h1>', 'text/html');
+  put(store, 'https://cdn.test/a.css', 'body{}', 'text/css');
+
+  await writeTree(store, { outDir: dir });
+
+  const hosts = await readdir(dir);
+  assert.deepEqual(hosts.sort(), ['cdn.test', 'x.test'], 'only captured hosts are listed');
 });
 
 test('a root reached through a symlink is cleared without destroying the target', async (t) => {
@@ -138,7 +153,7 @@ test('--force-tree overwrites a directory that has no marker', async (t) => {
   await writeTree(store, { outDir: dir, force: true });
 
   assert.equal(existsSync(join(dir, 'stale.txt')), false);
-  assert.equal(existsSync(join(dir, TREE_MARKER)), true, 'and the directory is stamped as ours');
+  assert.equal(existsSync(treeMarkerPath(dir)), true, `and ${TREE_MARKER} is stamped beside it`);
   assert.equal(await readFile(join(dir, 'x.test', 'a.css'), 'utf8'), 'body{}');
 });
 
