@@ -150,6 +150,40 @@ test('a JSON script block is not rewritten as JS', () => {
   assert.match(out, /\{"url":"\/a\.js"\}/);
 });
 
+test('a > inside a quoted attribute does not end the tag early', () => {
+  // `data-x="a>b"` is legal HTML, and a regex that stops the tag at the first `>`
+  // truncates it. The tag then kept its own src out of the attribute pass, and the
+  // truncation was invisible whenever the body was unchanged.
+  const resolver = map({
+    'https://cdn.test/x.js': '../cdn.test/x.js',
+    'https://cdn.test/y.js': '../cdn.test/y.js',
+  });
+  const html = '<script data-x="a>b" src="https://cdn.test/x.js">fetch("https://cdn.test/y.js")</script>';
+  const out = rewriteHtml(html, { baseUrl: 'https://x.test/', resolver });
+
+  assert.match(out, /<script data-x="a>b" src="\.\.\/cdn\.test\/x\.js">/, 'the tag and its own src survive');
+  assert.match(out, /fetch\("\.\.\/cdn\.test\/y\.js"\)/, 'and the body is still rewritten');
+});
+
+test('an img whose attribute holds a > keeps its src rewritten', () => {
+  const html = '<img alt="a > b" src="https://cdn.test/i.png">';
+  const out = rewriteHtml(html, { baseUrl: 'https://x.test/', resolver: map({ 'https://cdn.test/i.png': '../cdn.test/i.png' }) });
+  assert.equal(out, '<base href="./"><img alt="a > b" src="../cdn.test/i.png">');
+});
+
+test('a style block with a > in its open tag is rewritten, not swallowed', () => {
+  const html = '<style media="screen>print">body{background:url(/bg.png)}</style>';
+  const out = rewriteHtml(html, { baseUrl: 'https://x.test/', resolver: map({ 'https://x.test/bg.png': '../x.test/bg.png' }) });
+  assert.match(out, /media="screen>print"/);
+  assert.match(out, /url\("\.\.\/x\.test\/bg\.png"\)/);
+});
+
+test('a JSON block with a > in its attribute survives verbatim', () => {
+  const html = '<script type="application/json" data-x="a>b">{"url":"/a.js"}</script>';
+  const out = rewriteHtml(html, { baseUrl: 'https://x.test/', resolver: map({ 'https://x.test/a.js': '../x.test/a.js' }) });
+  assert.match(out, /\{"url":"\/a\.js"\}/);
+});
+
 test('the collect callback names every URL that could not be resolved', () => {
   const missed = [];
   rewriteHtml('<img src="https://x.test/miss1.png"><link href="https://x.test/miss2.css">', { baseUrl: 'https://page.test/', resolver: map({}), collect: (m) => missed.push(...m) });

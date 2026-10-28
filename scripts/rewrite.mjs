@@ -61,35 +61,89 @@ const URL_ATTR = '(?:src|href|data)';
 const SRCSET_ATTR = '(?:srcset|poster)';
 const TAG = '(?:script|link|img|source|video|audio|embed|track|iframe|object|input|use|image)';
 
+// Anything that is not a `>` outside a quoted run. `[^>]*` looks equivalent and is
+// not: an attribute value may legally contain `>`, so `data-x="a>b"` ended the tag
+// early and every attribute after it stopped being rewritten. The quoted branches
+// are what let the scan cross that `>`.
+const TAG_BODY = '(?:"[^"]*"|\'[^\']*\'|[^>])*?';
+
 // Group 1 is everything up to and including `name=`, group 2 names the attribute,
 // group 3 is the quote and group 4 the raw value. Both attribute alternatives must
 // consume their own `=`, so the separator lives inside the group.
 const ATTR_RE = new RegExp(
-  `(<${TAG}\\b[^>]*?\\b(${URL_ATTR}|${SRCSET_ATTR})\\s*=\\s*)(["'])([^"']*)\\3`,
+  `(<${TAG}\\b${TAG_BODY}\\b(${URL_ATTR}|${SRCSET_ATTR})\\s*=\\s*)(["'])([^"']*)\\3`,
   'gi',
 );
 const SRCSET_ONLY_RE = new RegExp(`^${SRCSET_ATTR}$`, 'i');
 
+/** Index of the `>` that closes the open tag starting at `from`, or -1 if none does. */
+function openTagEnd(text, from) {
+  let quote = null;
+  for (let i = from; i < text.length; i++) {
+    const c = text[i];
+    if (quote) {
+      if (c === quote) quote = null;
+      continue;
+    }
+    if (c === '"' || c === "'") { quote = c; continue; }
+    if (c === '>') return i;
+  }
+  return -1;
+}
+
+const BLOCK_OPEN_RE = /<(script|style)\b/gi;
+
+/**
+ * Replace each rewritable script/style *body* with a token the attribute pass
+ * cannot match, leaving the opening tag in the document so its own src/href is
+ * still rewritten.
+ *
+ * A single regex cannot do this. `<(script|style)\b([^>]*)>` ends the tag at the
+ * first `>`, which is inside a quoted attribute the moment a page writes
+ * `data-x="a>b"`: the tag was truncated to `<script data-x="a`, its own `src` fell
+ * into the parked body, and the document came out missing both. The scanner looks
+ * for the `>` the browser would find, and for the matching close tag.
+ */
+function parkBodies(html, { baseUrl, resolver, missed }) {
+  const bodies = [];
+  let out = '';
+  let cursor = 0;
+  BLOCK_OPEN_RE.lastIndex = 0;
+  let open;
+  while ((open = BLOCK_OPEN_RE.exec(html)) !== null) {
+    const start = open.index;
+    const tag = open[1].toLowerCase();
+    const end = openTagEnd(html, start);
+    if (end === -1) break;
+    const closeRe = new RegExp(`</${tag}\\s*>`, 'gi');
+    closeRe.lastIndex = end + 1;
+    const close = closeRe.exec(html);
+    if (!close) { BLOCK_OPEN_RE.lastIndex = end + 1; continue; }
+
+    const openTag = html.slice(start, end + 1);
+    out += html.slice(cursor, start);
+    if (/type\s*=\s*["'][^"']*json/i.test(openTag)) {
+      // JSON blocks are data, not code: they must survive verbatim.
+      out += html.slice(start, close.index + close[0].length);
+    } else {
+      const inner = html.slice(end + 1, close.index);
+      const sub = tag === 'style'
+        ? rewriteCss(inner, { baseUrl, resolver })
+        : rewriteJs(inner, { baseUrl, resolver });
+      missed.push(...sub.missed);
+      bodies.push(sub.text);
+      out += `${openTag}\u0000${bodies.length - 1}\u0000</${tag}>`;
+    }
+    cursor = close.index + close[0].length;
+    BLOCK_OPEN_RE.lastIndex = cursor;
+  }
+  out += html.slice(cursor);
+  return { parked: out, bodies };
+}
+
 export function rewriteHtml(html, { baseUrl, resolver, collect } = {}) {
   const missed = [];
-  const BLOCK_RE = /<(script|style)\b([^>]*)>([\s\S]*?)<\/\1>/gi;
-
-  // A script or style body is a foreign language: markup inside a JS string must not
-  // be read as an attribute. Park each rewritten *body* behind a token the attribute
-  // pass cannot match, leaving the opening tag in the document so its own src/href is
-  // still rewritten.
-  const bodies = [];
-  const parked = String(html).replace(BLOCK_RE, (whole, tag, attrs, inner, offset, source) => {
-    // JSON blocks are data, not code: they must survive verbatim.
-    if (/type\s*=\s*["'][^"']*json/i.test(attrs)) return whole;
-    const sub = tag.toLowerCase() === 'style'
-      ? rewriteCss(inner, { baseUrl, resolver })
-      : rewriteJs(inner, { baseUrl, resolver });
-    missed.push(...sub.missed);
-    bodies.push(sub.text);
-    const openTag = source.slice(offset, offset + whole.indexOf('>') + 1);
-    return `${openTag}\u0000${bodies.length - 1}\u0000</${tag}>`;
-  });
+  const { parked, bodies } = parkBodies(String(html), { baseUrl, resolver, missed });
 
   const rewritten = parked.replace(ATTR_RE, (whole, prefix, attrName, quote, value) => {
     if (SRCSET_ONLY_RE.test(attrName)) {
