@@ -42,6 +42,7 @@
     "motion"
   ],
   "files": [
+    ".claude-plugin",
     "commands",
     "scripts",
     "!scripts/__tests__",
