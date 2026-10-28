@@ -5,6 +5,22 @@ import dns from 'node:dns/promises';
 
 const ALLOWED_PROTOCOLS = new Set(['http:', 'https:']);
 
+// Characters that cannot appear raw in an http(s) URL: RFC 3986 excludes
+// backtick, quotes, angle brackets, pipe, caret, braces and backslash, and
+// controls and spaces are never part of a valid URL. `$`, `;` and `'` stay
+// allowed, because the RFC permits them in URI components and rejecting valid
+// URLs is not a security control.
+//
+// This is not the shell boundary, and calling it one would be wrong. A
+// /design-extractor invocation expands the caller's argument text inside a shell
+// line, and double quotes stop word splitting without stopping command
+// substitution, so a `$(...)` in that text runs before this code is reached. The
+// commands say so and the honesty sits there. What this gate does is keep the
+// target URL to characters a URL can contain, so a value pasted with quotes, a
+// stray newline or a pipe is refused here with the percent-encoded form to send,
+// rather than reaching Playwright as a malformed target.
+const UNSAFE_URL_CHARS = /[\u0000-\u0020\u007f`<>"\\^{}|]/;
+
 // IPv4 ranges a capture must never reach. Reserved blocks are refused as well as
 // private ones: a capture tool has no legitimate reason to touch TEST-NET or
 // multicast space, and leaving them open means an address that is only sometimes
@@ -142,9 +158,18 @@ function hostnameIsLocalLiteral(hostname) {
 // Pair with network policy / egress firewall for high-trust environments.
 export async function assertSafeUrl(rawUrl, opts = {}) {
   const { allowPrivate = false, resolver = dns.lookup } = opts;
+  const raw = String(rawUrl ?? '');
   let parsed;
-  try { parsed = new URL(rawUrl); }
+  try { parsed = new URL(raw); }
   catch (e) { throw new Error(`invalid URL: ${rawUrl}`); }
+  const badChar = UNSAFE_URL_CHARS.exec(raw);
+  if (badChar) {
+    const shown = badChar[0].trim() === '' ? `0x${badChar[0].charCodeAt(0).toString(16).padStart(2, '0')}` : badChar[0];
+    throw new Error(
+      `URL contains a character that cannot appear in it raw (${shown} at position ${badChar.index}). `
+      + 'Percent-encode it: %20 for a space, %22 for a quote, %7C for a pipe.',
+    );
+  }
 
   if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
     throw new Error(`disallowed URL scheme: ${parsed.protocol} (only http: and https: allowed)`);
