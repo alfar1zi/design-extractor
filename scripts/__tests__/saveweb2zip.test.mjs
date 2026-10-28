@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
-import { defaultOutDir, parseArgs, safeJoin, withRetry, downloadSiteWithFallback, runFallbackCli } from '../saveweb2zip.mjs';
+import { defaultOutDir, parseArgs, safeJoin, withRetry, downloadSiteWithFallback, runFallbackCli, assertExtractable, ZIP_LIMITS } from '../saveweb2zip.mjs';
 
 test('defaultOutDir uses timestamp pattern', () => {
   const d = new Date('2026-08-22T14:09:07Z');
@@ -115,5 +115,45 @@ test('downloadSiteWithFallback respects allowFallback=false (no npx spawn)', asy
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
+});
+
+test('--no-fallback turns the npx fallback off from the command line', () => {
+  assert.equal(parseArgs(['--url', 'https://x.test']).allowFallback, true, 'on by default');
+  assert.equal(parseArgs(['--url', 'https://x.test', '--no-fallback']).allowFallback, false);
+});
+
+test('an archive entry that declares more than the per-entry cap is refused', () => {
+  const running = { entries: 0, bytes: 0 };
+  const entry = { fileName: 'huge.bin', uncompressedSize: ZIP_LIMITS.entryBytes + 1, externalFileAttributes: 0 };
+  assert.throws(() => assertExtractable(entry, running), /over the .* cap/);
+});
+
+test('an archive that declares more total bytes than the cap is refused', () => {
+  const running = { entries: 0, bytes: 0 };
+  // Each entry fits under the per-entry cap; together they do not fit the total.
+  const chunk = { fileName: 'chunk.bin', uncompressedSize: 200 * 1024 * 1024, externalFileAttributes: 0 };
+  for (let i = 0; i < 5; i++) assert.equal(assertExtractable({ ...chunk, fileName: `c${i}.bin` }, running), true);
+  assert.throws(() => assertExtractable(chunk, running), /uncompressed total/);
+});
+
+test('an archive with more entries than the cap is refused', () => {
+  const running = { entries: ZIP_LIMITS.entries, bytes: 0 };
+  assert.throws(
+    () => assertExtractable({ fileName: 'x.txt', uncompressedSize: 1, externalFileAttributes: 0 }, running),
+    /more than .* entries/,
+  );
+});
+
+test('a symlink entry is refused: it is an unpacker instruction, not a file', () => {
+  const running = { entries: 0, bytes: 0 };
+  // UNIX file mode S_IFLNK, which is what yauzl exposes in the high 16 bits.
+  const link = { fileName: 'link', uncompressedSize: 0, externalFileAttributes: (0o120777 << 16) >>> 0 };
+  assert.throws(() => assertExtractable(link, running), /refusing symlink entry/);
+});
+
+test('a normal entry is accepted and counted', () => {
+  const running = { entries: 0, bytes: 0 };
+  assert.equal(assertExtractable({ fileName: 'a.css', uncompressedSize: 120, externalFileAttributes: 0 }, running), true);
+  assert.deepEqual(running, { entries: 1, bytes: 120 });
 });
 

@@ -15,6 +15,14 @@ const API = 'https://copier.saveweb2zip.com';
 const REFERER = 'https://saveweb2zip.com/en';
 const POLL_MS = 5000;
 
+// `npx --yes` resolves whatever the registry serves at that moment and runs it
+// with this process's privileges, which is a supply-chain path with no review and
+// no lockfile. The specs are overridable so a locked-down environment can pin a
+// reviewed version (`DE_MONOLITH_SPEC=monolith@2.10.1`) or skip it with
+// `--no-fallback`; the plain names are the zero-config default.
+const MONOLITH_SPEC = process.env.DE_MONOLITH_SPEC || 'monolith';
+const SINGLE_FILE_SPEC = process.env.DE_SINGLE_FILE_SPEC || 'single-file-cli';
+
 // ---- pure helpers (exported for tests) ----
 
 export function defaultOutDir(now = new Date()) {
@@ -24,7 +32,7 @@ export function defaultOutDir(now = new Date()) {
 }
 
 export function parseArgs(argv) {
-  const out = { url: null, outDir: null, renameAssets: false, saveStructure: false, alternativeAlgorithm: false, mobileVersion: false, timeoutSec: 300, json: null, allowPrivate: false, help: false };
+  const out = { url: null, outDir: null, renameAssets: false, saveStructure: false, alternativeAlgorithm: false, mobileVersion: false, timeoutSec: 300, json: null, allowPrivate: false, allowFallback: true, help: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -38,6 +46,7 @@ export function parseArgs(argv) {
       case '--timeout': out.timeoutSec = Number(next()); break;
       case '--json': out.json = next(); break;
       case '--allow-private': out.allowPrivate = true; break;
+      case '--no-fallback': out.allowFallback = false; break;
       case '-h': case '--help': out.help = true; break;
       default: throw new Error(`unknown flag: ${a}`);
     }
@@ -94,6 +103,7 @@ Options:
   --timeout <sec>          poll timeout in seconds (default: 300)
   --json <file>            write manifest JSON to file
   --allow-private          allow private/loopback URLs (off by default; SSRF guard)
+  --no-fallback            do not fetch monolith/single-file-cli via npx
   -h, --help               show this help
 `;
 
@@ -202,7 +212,7 @@ export async function downloadSiteWithFallback(url, outDir, opts = {}) {
   if (opts.allowFallback !== false) {
     try {
       const out = join(archiveDir, 'monolith.html');
-      await runFallbackCli('npx', ['--yes', 'monolith', url, '-o', out], out);
+      await runFallbackCli('npx', ['--yes', MONOLITH_SPEC, url, '-o', out], out);
       info(`fallback OK: monolith -> ${out}`);
       return { backend: 'monolith', outFile: out };
     } catch (e) {
@@ -212,7 +222,7 @@ export async function downloadSiteWithFallback(url, outDir, opts = {}) {
     try {
       const out = join(archiveDir, 'single-file.html');
       // single-file-cli takes the output as a positional; there is no --output-file option.
-      await runFallbackCli('npx', ['--yes', 'single-file-cli', url, out], out);
+      await runFallbackCli('npx', ['--yes', SINGLE_FILE_SPEC, url, out], out);
       info(`fallback OK: single-file-cli -> ${out}`);
       return { backend: 'single-file-cli', outFile: out };
     } catch (e) {
@@ -224,17 +234,52 @@ export async function downloadSiteWithFallback(url, outDir, opts = {}) {
 }
 
 // ---- zip extract ----
+
+// A zip from a third party is untrusted input. A 42 KB file can declare petabytes
+// of member data, and an archive of ten million tiny entries exhausts inodes before
+// it exhausts disk. Both are refused on the declared size before anything is
+// written: the declared size is what the archive itself asks the unpacker to trust,
+// and a capture tool has no reason to accept either shape.
+export const ZIP_LIMITS = {
+  entries: 20000,
+  entryBytes: 256 * 1024 * 1024,
+  totalBytes: 1024 * 1024 * 1024,
+};
+
+/** Throws when one archive entry must not be written. Mutates `running` on accept. */
+export function assertExtractable(entry, running) {
+  // A symlink member is an unpacker instruction, not a file: honouring it writes a
+  // link whose target is resolved by whatever later reads the directory.
+  const mode = (entry.externalFileAttributes >>> 16) & 0o170000;
+  if (mode === 0o120000) throw new Error(`zip: refusing symlink entry: ${entry.fileName}`);
+  if (running.entries >= ZIP_LIMITS.entries) {
+    throw new Error(`zip: more than ${ZIP_LIMITS.entries} entries; refusing to extract`);
+  }
+  const size = Number(entry.uncompressedSize) || 0;
+  if (size > ZIP_LIMITS.entryBytes) {
+    throw new Error(`zip: entry declares ${size} bytes, over the ${ZIP_LIMITS.entryBytes} cap: ${entry.fileName}`);
+  }
+  running.entries++;
+  running.bytes += size;
+  if (running.bytes > ZIP_LIMITS.totalBytes) {
+    throw new Error(`zip: declared uncompressed total over the ${ZIP_LIMITS.totalBytes} byte cap; refusing to extract`);
+  }
+  return true;
+}
+
 function extractZip(zipPath, outDir) {
   return new Promise(async (resolveP, rejectP) => {
     const { default: yauzl } = await import('yauzl');
     yauzl.open(zipPath, { lazyEntries: true }, (errOpen, zipfile) => {
       if (errOpen) return rejectP(errOpen);
       let count = 0;
+      const running = { entries: 0, bytes: 0 };
       zipfile.on('error', rejectP);
       zipfile.on('end', () => resolveP(count));
       zipfile.on('entry', (entry) => {
         try {
           if (/\/$/.test(entry.fileName)) return zipfile.readEntry();
+          assertExtractable(entry, running);
           const target = safeJoin(outDir, entry.fileName);
           mkdirSync(dirname(target), { recursive: true });
           zipfile.openReadStream(entry, (errRS, rs) => {
