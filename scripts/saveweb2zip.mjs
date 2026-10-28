@@ -10,6 +10,7 @@ import { spawn } from 'node:child_process';
 import { resolve, join, sep, posix, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
+import { normalizeArgv } from './argv.mjs';
 
 const API = 'https://copier.saveweb2zip.com';
 const REFERER = 'https://saveweb2zip.com/en';
@@ -298,7 +299,7 @@ function extractZip(zipPath, outDir) {
 
 // ---- main ----
 async function main() {
-  const args = await exit(2, parseArgs, process.argv.slice(2));
+  const args = await exit(2, parseArgs, normalizeArgv(process.argv.slice(2)));
   if (args.help) { process.stdout.write(HELP); return; }
 
   try { await assertSafeUrl(args.url, { allowPrivate: !!args.allowPrivate }); }

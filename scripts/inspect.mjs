@@ -6,6 +6,7 @@ import { mkdir, writeFile, stat, realpath } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
+import { normalizeArgv } from './argv.mjs';
 import { scanAnimationLibs } from './scan-libs.mjs';
 import { motionPass, summarizeMotion, describeMotion } from './motion-pass.mjs';
 import { sampleScrollTrack } from './scroll-track.mjs';
@@ -216,7 +217,7 @@ import { extractInteractiveElements } from './interaction-pass.mjs';
 // ---- main ----
 async function main() {
   let args;
-  try { args = parseArgs(process.argv.slice(2)); }
+  try { args = parseArgs(normalizeArgv(process.argv.slice(2))); }
   catch (e) { err(e.message); process.exit(2); }
   if (args.help) { process.stdout.write(HELP); return; }
 
