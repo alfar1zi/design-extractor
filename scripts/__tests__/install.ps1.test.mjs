@@ -34,10 +34,11 @@ test('install.ps1 has pwsh shebang', () => {
   assert.match(installPs1.split('\n')[0], /pwsh/);
 });
 
-test('install.ps1 checks Node 18+', () => {
+test('install.ps1 checks Node 20+', () => {
   assert.match(installPs1, /node\s+-p/);
   assert.match(installPs1, /process\.versions\.node/);
-  assert.ok(/-lt\s+18/.test(installPs1) || /18/.test(installPs1), 'expected 18 reference');
+  assert.match(installPs1, /-lt\s+20/);
+  assert.match(installPs1, /Node 20\+/);
 });
 
 test('install.ps1 has no em dash', () => {
