@@ -25,6 +25,10 @@ try {
     ['scripts/inspect.mjs', 'the capture itself'],
     ['scripts/fidelity.mjs', 'the scoring a --fidelity run depends on'],
     ['skills/design-extractor/SKILL.md', 'the skill the package exists to publish'],
+    // The manifest is the package's plugin entry point. It was absent from
+    // `files[]` for a release, so `npm install` produced a package with no
+    // plugin to install and nothing in the working tree noticed.
+    ['.claude-plugin/plugin.json', 'the plugin manifest a marketplace install reads'],
   ];
   const missing = required.filter(([p]) => !files.includes(p));
   if (missing.length) {

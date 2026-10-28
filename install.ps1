@@ -1,6 +1,6 @@
 #!/usr/bin/env pwsh
 # install.ps1 - one-shot setup for design-extractor on Windows / pwsh.
-# Idempotent. Verifies Node 18+, runs npm install, downloads Chromium, runs tests.
+# Idempotent. Verifies Node 20+, installs from the lockfile, downloads Chromium, runs tests.
 
 $ErrorActionPreference = 'Stop'
 
@@ -16,15 +16,17 @@ function Ok($msg)   { Say "${C_OK}${msg}${C_RST}" }
 function Dim($msg)  { Say "${C_DIM}${msg}${C_RST}" }
 function Fail($msg) { Say "${C_ERR}${msg}${C_RST}" ; exit 1 }
 
-# Step 1: verify Node 18+.
+# Step 1: verify Node 20+. This must match package.json `engines.node`: the
+# resolved playwright requires it, and a Node 18 install fails later with a stack
+# trace that says nothing about the real cause.
 if (-not (Get-Command node -ErrorAction SilentlyContinue)) {
-    Fail "Node not found on PATH. Install Node 18+ from https://nodejs.org/"
+    Fail "Node not found on PATH. Install Node 20+ from https://nodejs.org/"
 }
 $nodeRaw = node -p "process.versions.node"
 if ($LASTEXITCODE -ne 0) { Fail "Could not read Node version." }
 $nodeMajor = [int]($nodeRaw.Split('.')[0])
-if ($nodeMajor -lt 18) { Fail "Node $nodeRaw found. Need 18.0.0 or newer. Get it at https://nodejs.org/" }
-Ok "Node $nodeRaw (>= 18)"
+if ($nodeMajor -lt 20) { Fail "Node $nodeRaw found. Need 20.0.0 or newer. Get it at https://nodejs.org/" }
+Ok "Node $nodeRaw (>= 20)"
 
 # Resolve repo root (directory containing this script).
 $repoRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -33,12 +35,19 @@ Dim "Repo: $repoRoot"
 
 # Verify npm exists.
 if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
-    Fail "npm not found on PATH. Install Node 18+ from https://nodejs.org/ (npm ships with Node)."
+    Fail "npm not found on PATH. Install Node 20+ from https://nodejs.org/ (npm ships with Node)."
 }
 
-# Step 2: npm install.
-Say "==> npm install"
-& npm install --no-audit --no-fund
+# Step 2: install dependencies. A lockfile is what makes the install reproducible
+# and it is what CI uses, so the installer uses it too; `npm install` is the
+# fallback for a checkout that somehow lost it.
+if (Test-Path (Join-Path $repoRoot 'package-lock.json')) {
+    Say "==> npm ci"
+    & npm ci --no-audit --no-fund
+} else {
+    Say "==> npm install (no package-lock.json)"
+    & npm install --no-audit --no-fund
+}
 if ($LASTEXITCODE -ne 0) { Fail "npm install failed." }
 
 # Step 3: download Chromium for Playwright (slowest step on first run).
@@ -61,6 +70,8 @@ Ok "  npx design-extractor-inspect --url https://... --out ./refs/foo/live --vie
 Ok "  npx design-extractor <url>"
 Ok "=========================================="
 
-# Step 6: point agent at the skill file.
-$skillPath = Join-Path $repoRoot "SKILL.md"
+# Step 6: point agent at the skill file. The skill lives in the plugin layout,
+# not at the repo root, and an installer that prints a path that does not exist
+# costs the reader the one step it was meant to save.
+$skillPath = Join-Path $repoRoot "skills/design-extractor/SKILL.md"
 Ok "SKILL.md: $skillPath: point your agent at this file"

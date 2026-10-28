@@ -10,7 +10,7 @@
 
 ```bash
 node --version          # must be 20+
-npm install
+npm ci
 npm run install:browsers   # downloads Playwright Chromium
 ```
 

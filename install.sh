@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # install.sh - one-shot setup for design-extractor on macOS / Linux.
-# Idempotent. Verifies Node 20+, runs npm install, downloads Chromium, runs tests.
+# Idempotent. Verifies Node 20+, installs from the lockfile, downloads Chromium, runs tests.
 
-set -e
+set -eu
 
 # TTY-gated color (respect NO_COLOR).
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -32,9 +32,16 @@ REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO_ROOT"
 dim "Repo: $REPO_ROOT"
 
-# Step 2: npm install.
-say "==> npm install"
-npm install --no-audit --no-fund
+# Step 2: install dependencies. A lockfile is what makes the install reproducible
+# and it is what CI uses, so the installer uses it too; `npm install` is the
+# fallback for a checkout that somehow lost it.
+if [ -f package-lock.json ]; then
+  say "==> npm ci"
+  npm ci --no-audit --no-fund
+else
+  say "==> npm install (no package-lock.json)"
+  npm install --no-audit --no-fund
+fi
 
 # Step 3: download Chromium for Playwright (slowest step on first run).
 say "==> npm run install:browsers (first run can take 1-3 min)"
@@ -54,5 +61,7 @@ ok "  npx design-extractor-inspect --url https://... --out ./refs/foo/live --vie
 ok "  npx design-extractor <url>"
 ok "=========================================="
 
-# Step 6: point agent at the skill file.
-ok "SKILL.md: ${REPO_ROOT}/SKILL.md: point your agent at this file"
+# Step 6: point agent at the skill file. The skill lives in the plugin layout,
+# not at the repo root, and an installer that prints a path that does not exist
+# costs the reader the one step it was meant to save.
+ok "SKILL.md: ${REPO_ROOT}/skills/design-extractor/SKILL.md: point your agent at this file"
