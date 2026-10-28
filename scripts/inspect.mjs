@@ -6,6 +6,7 @@ import { mkdir, writeFile, stat, realpath } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
+import { normalizeArgv } from './argv.mjs';
 import { scanAnimationLibs } from './scan-libs.mjs';
 import { motionPass, summarizeMotion, describeMotion } from './motion-pass.mjs';
 import { sampleScrollTrack } from './scroll-track.mjs';
@@ -14,7 +15,7 @@ import { sourcemapPass } from './sourcemap-pass.mjs';
 import { detectCanvas } from './canvas-detect.mjs';
 import { createCaptureStore } from './capture-store.mjs';
 import { installInterceptor } from './request-intercept.mjs';
-import { writeTree } from './tree-writer.mjs';
+import { writeTree, assertTreeDirClearable } from './tree-writer.mjs';
 import { tokenPass } from './tokens.mjs';
 import { collectUnproducible } from './unproducible.mjs';
 import { findUnreproducible } from './unreproducible-pass.mjs';
@@ -47,7 +48,7 @@ export function parseArgs(argv) {
     url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: 30, fidelity: null,
     scroll: true, interactions: true, hover: true, states: true, sweep: true, siteDir: null,
     recordVideo: false, recordHoverVideo: false, allowPrivate: false, help: false,
-    sourcemap: false, targets: [],
+    sourcemap: false, targets: [], forceTree: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -72,6 +73,7 @@ export function parseArgs(argv) {
       case '--record-video': out.recordVideo = true; break;
       case '--record-hover-video': out.recordHoverVideo = true; break;
       case '--allow-private': out.allowPrivate = true; break;
+      case '--force-tree': out.forceTree = true; break;
       case '-h': case '--help': out.help = true; break;
       case '--quick':
         out.scroll = false;
@@ -160,6 +162,7 @@ Options:
   --record-video       record scroll pass as webm (slow, large)
   --record-hover-video record hover pass as webm (one clip per element)
   --allow-private      allow private/loopback URLs (SSRF guard off)
+  --force-tree         overwrite tree/ even when this tool did not write it
   -h, --help           show this help
 Outputs: screenshots/, a11y-tree.json, a11y-interactive.json, tokens.json, dom.html,
          network.json, console.json, interactions.json, hover.json, states.json, motion.json,
@@ -214,7 +217,7 @@ import { extractInteractiveElements } from './interaction-pass.mjs';
 // ---- main ----
 async function main() {
   let args;
-  try { args = parseArgs(process.argv.slice(2)); }
+  try { args = parseArgs(normalizeArgv(process.argv.slice(2))); }
   catch (e) { err(e.message); process.exit(2); }
   if (args.help) { process.stdout.write(HELP); return; }
 
@@ -226,6 +229,13 @@ async function main() {
   info(`URL: ${args.url}`);
   dim(`Outdir: ${outDir}  ${args.viewport.width}x${args.viewport.height}  timeout: ${args.timeout}s`);
 
+  // Checked before the browser starts: the tree pass clears its output directory,
+  // and refusing after a three-minute capture wastes the capture. The clear itself
+  // still happens at write time, so a failed run never deletes a good tree.
+  const treeRoot = join(outDir, 'tree');
+  try { await assertTreeDirClearable(treeRoot, { force: !!args.forceTree }); }
+  catch (e) { err(e.message); process.exit(2); }
+
   const browser = await launchOrHint();
   const ctxOptions = { viewport: args.viewport };
   if (args.recordVideo || args.recordHoverVideo) {
@@ -236,12 +246,27 @@ async function main() {
   const context = await browser.newContext(ctxOptions);
   // Must be installed before any page exists, so the first document is captured too.
   const store = createCaptureStore();
-  const treeRoot = join(outDir, 'tree');
   const interceptor = await installInterceptor(context, store, { allowPrivate: !!args.allowPrivate, root: treeRoot });
   let primary;
   try {
     primary = await recordPass(context, args.url, args.viewport, args.timeout, outDir, args.targets, err, store);
   } catch (e) {
+    // A refused main-frame navigation is a useful security result, not an empty
+    // directory. The redirect smoke gate and a human diagnosing a blocked target
+    // both need the exact hop and zero captured entries after the process exits.
+    // Write this before closing the browser: the interceptor owns the evidence
+    // while the context is alive, and no later pass can reconstruct it.
+    try {
+      await writeFile(join(outDir, 'capture.json'), JSON.stringify({
+        ...store.captureStats(),
+        blocked: interceptor.blocked(),
+        tree: { written: 0, bytes: 0, unrewritten: 0 },
+        error: e.message,
+      }, null, 2));
+    } catch (writeError) {
+      err(`Could not write capture failure evidence: ${writeError.message}`);
+    }
+    await interceptor.uninstall().catch(() => {});
     await browser.close().catch(() => {});
     err(`Primary capture failed: ${e.message}`);
     process.exit(1);
@@ -268,7 +293,7 @@ async function main() {
   ];
 
   const capture = store.captureStats();
-  const tree = await writeTree(store, { outDir: treeRoot });
+  const tree = await writeTree(store, { outDir: treeRoot, force: !!args.forceTree });
   await writeFile(join(outDir, 'capture.json'), JSON.stringify({
     ...capture,
     redirects: store.redirects,

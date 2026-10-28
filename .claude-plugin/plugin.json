@@ -1,6 +1,6 @@
 {
   "name": "design-extractor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Capture 1:1 website design references for AI agents.",
   "author": { "name": "alfar1zi", "url": "https://github.com/alfar1zi" },
   "license": "MIT",
