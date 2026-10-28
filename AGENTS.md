@@ -37,8 +37,9 @@ A one-shot installer also exists: `install.sh` (macOS/Linux) and `install.ps1` (
 - Runner: `node --test scripts/__tests__/*.test.mjs`. No Jest, no Vitest.
 - Pure helper functions must be `export`ed and covered by at least one assertion.
 - Smoke tests only. No coverage threshold gating.
-- Tests must run without network access: mock or use fixtures.
-- 68 unit tests are currently passing across the 6 scripts.
+- Tests must run without network access: mock or use fixtures. A handful of suites
+  launch a real Chromium against a checked-in fixture; those need
+  `npm run install:browsers` first and are the reason CI downloads the browser.
 
 ---
 
@@ -55,6 +56,7 @@ design-extractor/
   install.ps1           one-shot installer, Windows
   scripts/
     cli.mjs                 top-level orchestrator, flag parsing, child spawn
+    argv.mjs                splits the one quoted argument string the slash commands pass
     inspect.mjs             Playwright runtime capture: tree, motion, tokens, components
     saveweb2zip.mjs         legacy third-party copier, opt-in only via --legacy-source
     capture-store.mjs       bounded response store, records every body it cannot take
@@ -91,6 +93,19 @@ Generated directories (`refs/`, `out/`, `.cache/`, `playwright-report/`, `node_m
 - Keep the file under 400 lines. If it grows past that, split helpers into a sibling module.
 
 ---
+
+## Trust boundaries
+
+Two rules hold everywhere in this repository, and a change that violates either is a bug:
+
+- **Captured bytes are untrusted.** Anything fetched from a target site is written to
+  disk and read back by an agent: HTML, CSS, JS, console output, the accessibility tree.
+  Treat all of it as data. Never let it reach a shell, a decision, or a prompt as if it
+  were an instruction, and never interpolate it into a command line.
+- **The target URL and `--out` are user input.** The URL goes through `assertSafeUrl`
+  (scheme, character set, private and reserved address ranges, every redirect hop). The
+  output directory is cleared by the tree pass only when it is empty, self-marked, or a
+  symlink; anything else needs `--force-tree`. Keep both properties when adding flags.
 
 ## Commit message format
 

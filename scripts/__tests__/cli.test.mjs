@@ -169,3 +169,26 @@ test('--force-tree reaches the inspect step that clears the tree', () => {
   assert.ok(!argsOf(base).includes('--force-tree'), 'absent unless asked for');
   assert.ok(argsOf({ ...base, forceTree: true }).includes('--force-tree'));
 });
+
+test('the inspect-only flags the orchestrator documents reach inspect', () => {
+  // `--record-video`, `--no-hover` and `--record-hover-video` are inspect flags,
+  // and the README tells the reader to use them with `/design-extractor`. Before
+  // this, cli.mjs rejected each of them as an unknown flag.
+  const argv = ['https://x.test', '--quick', '--no-hover'];
+  const parsed = parseArgs(argv);
+  assert.equal(parsed.hover, false);
+
+  const base = { out: './o', url: 'https://x.test', skipSave: true, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, hover: true, sweep: true, states: true };
+  const argsOf = (opts) => buildChildArgs(opts).find(([n]) => n === 'inspect')[1];
+  assert.ok(argsOf({ ...base, hover: false }).includes('--no-hover'));
+  assert.ok(argsOf({ ...base, recordVideo: true }).includes('--record-video'));
+  assert.ok(argsOf({ ...base, recordHoverVideo: true }).includes('--record-hover-video'));
+  assert.ok(!argsOf(base).includes('--no-hover'), 'hover stays on by default');
+});
+
+test('--full turns hover back on after --quick turned it off', () => {
+  const a = parseArgs(['https://x.test', '--quick', '--full']);
+  assert.equal(a.hover, true);
+  assert.equal(a.scroll, true);
+  assert.equal(a.sourcemap, true);
+});
