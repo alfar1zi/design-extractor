@@ -399,4 +399,23 @@ Not proven, and treated as unknown rather than assumed to work:
 
 ## Contributing
 
-Read `AGENTS.md` for code style, testing, file layout, commit format, and PR workflow. License: MIT. Maintainer: alfar1zi.
+```bash
+npm ci && npm run install:browsers
+npm test        # node --test over scripts/__tests__/*.test.mjs
+npm run lint    # module syntax, documented-flag parity, root-stays-clean
+npm run validate  # plugin manifests and skill frontmatter
+```
+
+Conventions the gates enforce, rather than a doc that asks politely:
+
+- **One root markdown file.** This README. Anything else belongs inside the skill,
+  next to the commands it describes.
+- **Every flag in the prose is a flag some parser accepts.** `npm run lint` compares
+  the two; `--record-video` advertised for a CLI that rejected it is the bug it exists for.
+- **Keep modules small.** Aim under 400 lines and split by responsibility, the way
+  `manifest.mjs`, `sweep-pass.mjs` and `interaction-pass.mjs` were split out of
+  `inspect.mjs`. That file is at 408 and is the one to split when next touched.
+- **Tests ship with the fix**, and a browser-dependent suite belongs in the smoke
+  gates rather than the unit run.
+
+License: MIT. Maintainer: alfar1zi.

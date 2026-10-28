@@ -1,22 +1,31 @@
 name: ci
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+# The default token is broader than this workflow needs, and a workflow file is
+# the one place a compromised dependency can act with it.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Node ${{ matrix.node }} on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
         node: [20, 22]
         os: [ubuntu-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Pinned to a commit, not a tag: a tag is mutable and a moved one runs
+      # different code with this repository's token.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: ${{ matrix.node }}
           cache: npm
@@ -25,19 +34,30 @@ jobs:
       - run: npm test
 
   smoke:
-    name: browser smoke gates
+    name: repository gates
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+
+      # Documentation drift is invisible to a test run: a flag the README
+      # advertises and no parser accepts reads as correct until someone types it.
+      - run: npm run lint
+      # The manifests are what the marketplaces read. A missing field fails for
+      # the user installing the plugin, not for the person editing it.
+      - run: npm run validate
+      # Production dependencies only: an advisory in the dev tree is worth
+      # knowing about but is not a reason to block a release.
+      - run: npm audit --omit=dev --audit-level=high
+
       - run: npx playwright install --with-deps chromium
       # A unit suite that only proves the modules agree with each other cannot
-      # prove the capture still works against a real page. These three do.
+      # prove the capture still works against a real page. These do.
       - run: node scripts/__tests__/redirect-ssrf.smoke.mjs
       # Captures the checked-in fixture, not a third party. Against
       # tailwindcss.com a redesign there turned a real regression green and an
