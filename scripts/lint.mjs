@@ -139,6 +139,25 @@ async function main() {
     problems.push(`scripts/__tests__/${f} is neither *.test.mjs nor *.smoke.mjs, so no runner picks it up`);
   }
 
+  // 6. Evidence logs stay plain text. `linear-v5.log` shipped as UTF-16LE with
+  //    CRLF from a PowerShell redirect, so GitHub rendered the repository's proof
+  //    as a binary blob and `.gitattributes` could not normalise it.
+  const logDir = join(REPO, 'examples');
+  for (const f of await readdir(logDir)) {
+    if (!f.endsWith('.log')) continue;
+    const bytes = await readFile(join(logDir, f));
+    if (bytes.includes(0)) {
+      problems.push(`examples/${f} is not UTF-8 text (contains NUL): GitHub renders it as binary`);
+      continue;
+    }
+    if (bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
+      problems.push(`examples/${f} starts with a UTF-8 BOM; logs are read as text and need none`);
+    }
+    if (bytes.includes(0x0d)) {
+      problems.push(`examples/${f} contains CR; logs use LF so they diff and render cleanly`);
+    }
+  }
+
   if (problems.length === 0) {
     process.stdout.write(`OK: ${modules.length} modules parse, ${documented.size} documented flags all exist, root is ${rootMd.join(' + ')}\n`);
     return;

@@ -171,7 +171,7 @@ and 0 clusters. Replaying `gsap.com` the same way came out at **2.32%** across 1
 clusters - and the tool had already named why, listing six `<video>` regions and
 three auth-gated ones in `unreproducible.json` before anyone compared a pixel.
 
-Three real production sites (2026-08-22, all numbers from `examples/*.log`):
+Three real production sites (2026-08-22). The logs for these three runs are not in the repository, so treat the table as a claim about what the tool produced that day rather than as something you can re-read here; `examples/` ships the two runs whose logs were kept, both UTF-8 with LF endings:
 
 | site | source files | live artifacts | total | zip size |
 | --- | ---: | ---: | ---: | ---: |
