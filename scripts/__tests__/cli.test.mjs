@@ -162,3 +162,10 @@ test('a clean capture reports its output and exits 0', async () => {
   assert.equal(code, 0, `a capture where every pass worked exits 0; got:\n${stdout}`);
   assert.match(stdout, /live:/, 'and it names the directory it wrote');
 });
+
+test('--force-tree reaches the inspect step that clears the tree', () => {
+  const base = { out: './o', url: 'https://x.test', skipSave: true, skipInspect: false, viewport: '1440x900', timeout: 30, scroll: true, interactions: true, sweep: true, states: true };
+  const argsOf = (opts) => buildChildArgs(opts).find(([n]) => n === 'inspect')[1];
+  assert.ok(!argsOf(base).includes('--force-tree'), 'absent unless asked for');
+  assert.ok(argsOf({ ...base, forceTree: true }).includes('--force-tree'));
+});

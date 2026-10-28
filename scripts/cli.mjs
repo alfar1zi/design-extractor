@@ -13,7 +13,7 @@ const DEFAULT_TIMEOUT = 30;
 // ---- pure helpers (exported for tests) ----
 
 export function parseArgs(argv) {
-  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, sweep: true, states: true, skipSave: false, skipInspect: false, legacySource: false, allowPrivate: false, help: false, sourcemap: false, targets: [] };
+  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, sweep: true, states: true, skipSave: false, skipInspect: false, legacySource: false, allowPrivate: false, forceTree: false, help: false, sourcemap: false, targets: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -40,6 +40,7 @@ export function parseArgs(argv) {
       case '--skip-inspect': out.skipInspect = true; break;
       case '--legacy-source': out.legacySource = true; break;
       case '--allow-private': out.allowPrivate = true; break;
+      case '--force-tree': out.forceTree = true; break;
       case '-h': case '--help': out.help = true; break;
       case '--quick':
         out.scroll = false;
@@ -109,6 +110,7 @@ export function buildChildArgs(opts) {
     if (opts.allowPrivate) inspect.push('--allow-private');
     if (opts.fidelity) inspect.push('--fidelity', opts.fidelity);
     if (opts.sourcemap) inspect.push('--sourcemap');
+    if (opts.forceTree) inspect.push('--force-tree');
     for (const t of opts.targets || []) inspect.push('--target', t);
     args.push(['inspect', inspect]);
   }
@@ -185,6 +187,7 @@ Options:
   --skip-save           skip source download step
   --skip-inspect        skip browser inspect step
   --allow-private       allow private/loopback URLs (off by default; SSRF guard)
+  --force-tree          overwrite live/tree even when this tool did not write it
   -h, --help            show this help
 
 Steps: inspect (browser capture; writes the executable artifacts).

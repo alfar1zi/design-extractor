@@ -14,7 +14,7 @@ import { sourcemapPass } from './sourcemap-pass.mjs';
 import { detectCanvas } from './canvas-detect.mjs';
 import { createCaptureStore } from './capture-store.mjs';
 import { installInterceptor } from './request-intercept.mjs';
-import { writeTree } from './tree-writer.mjs';
+import { writeTree, assertTreeDirClearable } from './tree-writer.mjs';
 import { tokenPass } from './tokens.mjs';
 import { collectUnproducible } from './unproducible.mjs';
 import { findUnreproducible } from './unreproducible-pass.mjs';
@@ -47,7 +47,7 @@ export function parseArgs(argv) {
     url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: 30, fidelity: null,
     scroll: true, interactions: true, hover: true, states: true, sweep: true, siteDir: null,
     recordVideo: false, recordHoverVideo: false, allowPrivate: false, help: false,
-    sourcemap: false, targets: [],
+    sourcemap: false, targets: [], forceTree: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -72,6 +72,7 @@ export function parseArgs(argv) {
       case '--record-video': out.recordVideo = true; break;
       case '--record-hover-video': out.recordHoverVideo = true; break;
       case '--allow-private': out.allowPrivate = true; break;
+      case '--force-tree': out.forceTree = true; break;
       case '-h': case '--help': out.help = true; break;
       case '--quick':
         out.scroll = false;
@@ -160,6 +161,7 @@ Options:
   --record-video       record scroll pass as webm (slow, large)
   --record-hover-video record hover pass as webm (one clip per element)
   --allow-private      allow private/loopback URLs (SSRF guard off)
+  --force-tree         overwrite tree/ even when this tool did not write it
   -h, --help           show this help
 Outputs: screenshots/, a11y-tree.json, a11y-interactive.json, tokens.json, dom.html,
          network.json, console.json, interactions.json, hover.json, states.json, motion.json,
@@ -226,6 +228,13 @@ async function main() {
   info(`URL: ${args.url}`);
   dim(`Outdir: ${outDir}  ${args.viewport.width}x${args.viewport.height}  timeout: ${args.timeout}s`);
 
+  // Checked before the browser starts: the tree pass clears its output directory,
+  // and refusing after a three-minute capture wastes the capture. The clear itself
+  // still happens at write time, so a failed run never deletes a good tree.
+  const treeRoot = join(outDir, 'tree');
+  try { await assertTreeDirClearable(treeRoot, { force: !!args.forceTree }); }
+  catch (e) { err(e.message); process.exit(2); }
+
   const browser = await launchOrHint();
   const ctxOptions = { viewport: args.viewport };
   if (args.recordVideo || args.recordHoverVideo) {
@@ -236,7 +245,6 @@ async function main() {
   const context = await browser.newContext(ctxOptions);
   // Must be installed before any page exists, so the first document is captured too.
   const store = createCaptureStore();
-  const treeRoot = join(outDir, 'tree');
   const interceptor = await installInterceptor(context, store, { allowPrivate: !!args.allowPrivate, root: treeRoot });
   let primary;
   try {
@@ -268,7 +276,7 @@ async function main() {
   ];
 
   const capture = store.captureStats();
-  const tree = await writeTree(store, { outDir: treeRoot });
+  const tree = await writeTree(store, { outDir: treeRoot, force: !!args.forceTree });
   await writeFile(join(outDir, 'capture.json'), JSON.stringify({
     ...capture,
     redirects: store.redirects,

@@ -1,13 +1,60 @@
 // tree-writer.mjs - materialise the capture store as a browsable tree on disk.
 // The point of the tree is that it opens with the network switched off.
 
-import { mkdir, writeFile, rename, rm } from 'node:fs/promises';
+import { mkdir, writeFile, rename, rm, readdir, lstat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { rewriteCss, rewriteHtml, rewriteJs } from './rewrite.mjs';
 import { assertInsideRoot } from './url-tree.mjs';
 import { treeResolver } from './request-intercept.mjs';
 
 const REWRITERS = { html: rewriteHtml, css: rewriteCss, js: rewriteJs };
+
+/** Written on every successful prepare; its absence is what marks a foreign directory. */
+export const TREE_MARKER = '.design-extractor-tree';
+
+/**
+ * Throw when clearing `outDir` would delete something this tool did not write.
+ *
+ * `--out` is user input that reaches `rm -rf` unexamined: pointing it at a
+ * directory that already held something made the tree pass delete it and report
+ * success. A directory the previous run wrote is safe to clear (the marker is
+ * there); anything else needs `--force-tree`, so the default cannot destroy work.
+ *
+ * Separated from the clear so the caller can refuse before spending a browser
+ * session, and so a failed capture never clears the tree it was going to replace.
+ *
+ * @param {string} outDir
+ * @param {{force?: boolean}} [opts]
+ */
+export async function assertTreeDirClearable(outDir, { force = false } = {}) {
+  let info = null;
+  try { info = await lstat(outDir); } catch { return true; }
+  // A symlink is unlinked, never followed: `rm` on a link removes the link, while
+  // resolving it first would delete whatever it pointed at.
+  if (info.isSymbolicLink()) return true;
+  if (!info.isDirectory()) throw new Error(`tree: ${outDir} exists and is not a directory`);
+  const names = await readdir(outDir);
+  const foreign = names.filter((n) => n !== TREE_MARKER);
+  if (!names.includes(TREE_MARKER) && foreign.length > 0 && !force) {
+    throw new Error(
+      `tree: refusing to delete ${outDir}: it holds ${foreign.length} `
+      + `entries this tool did not write and no ${TREE_MARKER} marker. `
+      + 'Pass --force-tree to overwrite it anyway.',
+    );
+  }
+  return true;
+}
+
+/** Clear and re-create the tree directory, then stamp it as ours. */
+export async function prepareTreeDir(outDir, { force = false } = {}) {
+  await assertTreeDirClearable(outDir, { force });
+  let info = null;
+  try { info = await lstat(outDir); } catch { /* absent */ }
+  if (info) await rm(outDir, { recursive: true, force: true });
+  await mkdir(outDir, { recursive: true });
+  await writeFile(join(outDir, TREE_MARKER), 'design-extractor capture tree - generated, safe to delete\n');
+  return outDir;
+}
 
 /**
  * Write every captured body to <outDir>/<rel>, rewriting references so the tree
@@ -16,18 +63,9 @@ const REWRITERS = { html: rewriteHtml, css: rewriteCss, js: rewriteJs };
  * @param {ReturnType<import('./capture-store.mjs').createCaptureStore>} store
  * @returns {Promise<{written: number, bytes: number, missed: Array<{url: string, rel: string}>}>}
  */
-export async function writeTree(store, { outDir }) {
+export async function writeTree(store, { outDir, force = false }) {
   const { entries } = store.captureStats();
-  // Cleared first. `mkdir({recursive:true})` leaves whatever the previous run
-  // wrote, so two captures into one `--out` merged into a tree holding both runs'
-  // bytes with nothing marking which was which.
-  //
-  // Removed by path, not by `realpath` of it: `rm` on a symlink unlinks the link
-  // and leaves the target alone, while `rm(realpath(link))` deletes the directory
-  // the link pointed at. Resolving first here would destroy whatever the user
-  // had symlinked `--out` at.
-  await rm(outDir, { recursive: true, force: true });
-  await mkdir(outDir, { recursive: true });
+  await prepareTreeDir(outDir, { force });
 
   return await writeCaptured(outDir, entries, store);
 }
