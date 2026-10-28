@@ -6,6 +6,7 @@ import { mkdir, readdir, realpath } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
+import { normalizeArgv } from './argv.mjs';
 
 const DEFAULT_VIEWPORT = '1440x900';
 const DEFAULT_TIMEOUT = 30;
@@ -13,7 +14,7 @@ const DEFAULT_TIMEOUT = 30;
 // ---- pure helpers (exported for tests) ----
 
 export function parseArgs(argv) {
-  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, sweep: true, states: true, skipSave: false, skipInspect: false, legacySource: false, allowPrivate: false, help: false, sourcemap: false, targets: [] };
+  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, hover: true, sweep: true, states: true, recordVideo: false, recordHoverVideo: false, skipSave: false, skipInspect: false, legacySource: false, allowPrivate: false, forceTree: false, help: false, sourcemap: false, targets: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -34,16 +35,21 @@ export function parseArgs(argv) {
       case '--timeout': out.timeout = Number(next()); break;
       case '--no-scroll': out.scroll = false; break;
       case '--no-interactions': out.interactions = false; break;
+      case '--no-hover': out.hover = false; break;
+      case '--record-video': out.recordVideo = true; break;
+      case '--record-hover-video': out.recordHoverVideo = true; break;
       case '--no-sweep': out.sweep = false; break;
       case '--no-states': out.states = false; break;
       case '--skip-save': out.skipSave = true; break;
       case '--skip-inspect': out.skipInspect = true; break;
       case '--legacy-source': out.legacySource = true; break;
       case '--allow-private': out.allowPrivate = true; break;
+      case '--force-tree': out.forceTree = true; break;
       case '-h': case '--help': out.help = true; break;
       case '--quick':
         out.scroll = false;
         out.interactions = false;
+        out.hover = false;
         out.sweep = false;
         out.states = false;
         out.sourcemap = false;
@@ -51,6 +57,7 @@ export function parseArgs(argv) {
       case '--full':
         out.scroll = true;
         out.interactions = true;
+        out.hover = true;
         out.sweep = true;
         out.states = true;
         out.sourcemap = true;
@@ -104,11 +111,15 @@ export function buildChildArgs(opts) {
     if (opts.legacySource && !opts.skipSave) inspect.push('--site-dir', join(opts.out, 'site'));
     if (!opts.scroll) inspect.push('--no-scroll');
     if (!opts.interactions) inspect.push('--no-interactions');
+    if (opts.hover === false) inspect.push('--no-hover');
+    if (opts.recordVideo) inspect.push('--record-video');
+    if (opts.recordHoverVideo) inspect.push('--record-hover-video');
     if (!opts.sweep) inspect.push('--no-sweep');
     if (!opts.states) inspect.push('--no-states');
     if (opts.allowPrivate) inspect.push('--allow-private');
     if (opts.fidelity) inspect.push('--fidelity', opts.fidelity);
     if (opts.sourcemap) inspect.push('--sourcemap');
+    if (opts.forceTree) inspect.push('--force-tree');
     for (const t of opts.targets || []) inspect.push('--target', t);
     args.push(['inspect', inspect]);
   }
@@ -178,6 +189,9 @@ Options:
   --sourcemap           extract original function names from JS source maps
   --no-scroll           skip scroll screenshot pass
   --no-interactions     skip clickable interaction pass
+  --no-hover            skip hover pass
+  --record-video        record the scroll pass as webm (slow, large)
+  --record-hover-video  record the hover pass as webm (one clip per element)
   --no-sweep            skip tablet+mobile viewport sweep
   --fidelity <dir>      score a replica directory against the original
   --no-states           skip hover/focus/checked state capture
@@ -185,6 +199,7 @@ Options:
   --skip-save           skip source download step
   --skip-inspect        skip browser inspect step
   --allow-private       allow private/loopback URLs (off by default; SSRF guard)
+  --force-tree          overwrite live/tree even when this tool did not write it
   -h, --help            show this help
 
 Steps: inspect (browser capture; writes the executable artifacts).
@@ -194,7 +209,7 @@ Steps: inspect (browser capture; writes the executable artifacts).
 // ---- main ----
 async function main() {
   let args;
-  try { args = parseArgs(process.argv.slice(2)); }
+  try { args = parseArgs(normalizeArgv(process.argv.slice(2))); }
   catch (e) { err(e.message); process.exit(2); }
   if (args.help) { process.stdout.write(HELP); return; }
 

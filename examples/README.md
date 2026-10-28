@@ -75,7 +75,7 @@ Start with the source, then layer on the live signals:
 8. `live/interactions.json`: per-element click result + `result` category. Skip entries where `result != "ok"` when counting what the user can actually click.
 9. `live/hover.json`: per-element hover transition timing, measured as `max(duration_i + delay_i)` across the whole list, not the first value.
 10. `live/motion.json`: every animation track, labelled by which of the four sources it came from.
-11. `live/components.json`: framework-reported component boundaries. Read `live/components.inferred.json` separately; it is a guess, not a report.
+11. `live/components.authoritative.json`: framework-reported component boundaries. Read `live/components.inferred.json` separately; it is a guess, not a report.
 12. `live/unproducible.json`: read this before promising a 1:1 rebuild. It names every canvas, cross-origin stylesheet and truncated sample the capture could not turn into DOM or CSS.
 
 The `site/` and `live/` directories are not committed to the repo (they are in `.gitignore`). Only the `.log` files ship here as proof of the run. To get the full artifact folders for a given site, run the reproduction commands above.

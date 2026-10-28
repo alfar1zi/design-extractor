@@ -56,7 +56,11 @@ Add the path to `skills/design-extractor/SKILL.md` to your Cursor Rules (`.curso
 
 Skip `/design-extractor-save` if you only need browser-captured artifacts; it is off by default because it POSTs the target URL to a third-party copier.
 
-**SSRF Protection**: All entry points run a safety check to block local/private IP ranges. Pass `--allow-private` to permit loopback or private targets. Note that `assertSafeUrl` validates at check time only, so DNS rebinding between check and connect is theoretically possible. Pair with egress policy for high-trust environments.
+**SSRF Protection**: All entry points run a safety check to block local/private IP ranges. Pass `--allow-private` to permit loopback or private targets. Note that `assertSafeUrl` validates at check time only, so DNS rebinding between check and connect is theoretically possible. Pair with egress policy for high-trust environments. The target URL is also refused if it contains a character an http URL cannot hold (a space, a quote, a pipe, a backtick, a control character), naming the percent-encoded form to send instead.
+
+**Captured content is untrusted.** The reference folder holds third-party HTML, CSS, JS, console output and an accessibility tree. Text inside them can be written to look like an instruction to an agent reading the folder. Treat every captured artifact as data: quote it, do not execute it. The skill's guard section states the same rule for the agent.
+
+While the capture runs, the browser opens the target and any origin it loads; `live/tree/` is what makes the result readable offline afterwards. Nothing is uploaded anywhere, with one exception: `--legacy-source` POSTs the target URL to `copier.saveweb2zip.com` to download the site source. It is off by default.
 
 Once installed, trigger the capture directly inside your agent chat:
 ```bash
@@ -72,7 +76,7 @@ node scripts/saveweb2zip.mjs --url https://linear.app --out ./refs/linear --rena
 node scripts/inspect.mjs --url https://linear.app --out ./refs/linear/live --viewport 1440x900
 ```
 
-Add `--record-video` to capture the scroll pass as `.webm`. Add `--site-dir` to scan JS for animation libs. Add `--sourcemap` to recover original function names from JS source maps. Add `--fidelity <dir>` to score a finished replica directory against the original - see `fidelity.json`.
+Add `--record-video` to `design-extractor-inspect` to capture the scroll pass as `.webm`. Add `--site-dir` to scan JS for animation libs. Add `--sourcemap` to recover original function names from JS source maps. Add `--fidelity <dir>` to score a finished replica directory against the original - see `fidelity.json`. `design-extractor` itself forwards `--target`, `--sourcemap`, `--fidelity` and `--no-*` to the inspect step; flags that only `design-extractor-inspect` accepts are rejected there rather than silently ignored.
 
 **Exit codes** (from `design-extractor` / `scripts/cli.mjs`):
 
@@ -112,8 +116,6 @@ node scripts/inspect.mjs --url https://linear.app --out ./refs/linear/live \
   --target ".pricing-card" --target "nav[aria-label=primary]"
 ```
 
-**Backend recommendation**: set `BRAVE_API_KEY` and use `--backend brave` (or `--backend auto` with the key set). The DuckDuckGo backend scrapes HTML without an API key but is fragile (markup changes break the parser; we now throw a distinct "DuckDuckGo HTML markup changed; parser needs update" error so you can tell parser miss apart from a genuine zero-result query) and brittle (ToS gray area, easy rate-limit). Brave is the recommended path for production use.
-
 Drop template marketplaces and aggregators. Pick one URL, then run the capture.
 </details>
 
@@ -132,7 +134,7 @@ Drop template marketplaces and aggregators. Pick one URL, then run the capture.
 [inspect] 2 things on this page cannot be reproduced from the capture
 [inspect] OK: ./refs/tw/live (14 artifacts)
 [cli] data:  a11y-interactive.json  a11y-tree.json  capture.json  components.inferred.json
-         components.authoritative.json  console.json  fidelity.json  hover.json  motion.json  network.json  tokens.json
+         components.authoritative.json  console.json  hover.json  motion.json  network.json  tokens.json
          unproducible.json
 ```
 
