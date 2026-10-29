@@ -12,7 +12,8 @@
 
 import { readFile } from 'node:fs/promises';
 import { join, dirname } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { realpathSync } from 'node:fs';
 
 const REPO = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -69,11 +70,17 @@ export function checkVersions(pairs, tag) {
   return problems;
 }
 
-if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*\/scripts\//, 'scripts/'))) {
+// pathToFileURL, not a string comparison: on Windows argv[1] is
+// C:\\repo\\scripts\\check-release.mjs while import.meta.url is
+// file:///C:/repo/scripts/check-release.mjs, so endsWith never matched and the
+// script silently exited 0 without checking anything.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   const tag = process.argv[2];
   const problems = checkVersions(await versionsIn(), tag);
   if (problems.length) {
-    for (const p of problems) process.stdout.write(`error: ${p}\n`);
+    // stderr, not stdout: a caller piping this into a log or a parser must not
+    // find error text where it expected the success line.
+    for (const p of problems) process.stderr.write(`error: ${p}\n`);
     process.exit(1);
   }
   process.stdout.write(`OK: every manifest agrees on ${(await versionsIn())[0][1]}${tag ? ` and matches ${tag}` : ''}\n`);
