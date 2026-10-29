@@ -44,7 +44,13 @@ function main() {
         console.error('No test files found in', testsDir);
         process.exit(2);
       }
-      const args = ['--test', ...resolveTests(testsDir, names)];
+      // One file per process, and 26 of them launch a real Chromium. Left at
+      // the default (one process per CPU) the suite ran several browsers at once
+      // on a two-core runner, and the failures were screenshot protocol errors
+      // and animation assertions that passed every time in isolation: the tests
+      // were measuring the scheduler. Two at a time keeps the wall clock close
+      // and makes a red run mean the code.
+      const args = ['--test', '--test-concurrency=2', ...resolveTests(testsDir, names)];
       const child = spawn(process.execPath, args, { stdio: 'inherit' });
       child.on('error', (e) => {
         console.error(`run-tests: spawn failed: ${e.message}`);

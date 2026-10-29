@@ -68,3 +68,23 @@ test('a tag that is not a version is refused even when manifests agree', () => {
   assert.equal(problems.length, 1);
   assert.match(problems[0], /is not vX\.Y\.Z/);
 });
+
+test('the script actually runs when invoked as a program', async () => {
+  // A main-guard that never matches exits 0 having checked nothing, which is
+  // exactly how a release gate passes on a tree it should have refused. On
+  // Windows the old string comparison compared a backslash path against a
+  // file:// URL and never fired.
+  const { execFile } = await import('node:child_process');
+  const { promisify } = await import('node:util');
+  const { fileURLToPath } = await import('node:url');
+  const run = promisify(execFile);
+  const script = fileURLToPath(new URL('../check-release.mjs', import.meta.url));
+
+  const good = await run(process.execPath, [script]);
+  assert.match(good.stdout, /every manifest agrees/);
+
+  await assert.rejects(
+    () => run(process.execPath, [script, 'v0.0.1']),
+    (e) => e.code === 1 && /names 0\.0\.1/.test(e.stderr),
+  );
+});
