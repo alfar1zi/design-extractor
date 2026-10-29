@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="assets/logo.svg">
-    <img src="assets/logo.svg" width="140" alt="design-extractor: a page being inspected through a magnifier">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo-light.svg">
+    <img src="assets/logo.svg" width="128" alt="design-extractor: a page being inspected through a magnifier">
   </picture>
 </p>
 
@@ -14,10 +14,10 @@
 </p>
 
 <p align="center">
-  <a href="https://www.skills.sh/alfar1zi/design-extractor"><img src="https://skills.sh/b/alfar1zi/design-extractor" alt="skills.sh installs"></a>
-  <a href="../../actions/workflows/ci.yml"><img src="../../actions/workflows/ci.yml/badge.svg" alt="ci"></a>
+  <a href="https://github.com/alfar1zi/design-extractor/actions/workflows/ci.yml"><img src="https://github.com/alfar1zi/design-extractor/actions/workflows/ci.yml/badge.svg" alt="ci status"></a>
   <img src="https://img.shields.io/badge/node-%E2%89%A520-339933" alt="node 20 or newer">
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
+  <a href="https://www.skills.sh/alfar1zi/design-extractor"><img src="https://img.shields.io/badge/agent%20skill-skills.sh-0969da" alt="listed on skills.sh"></a>
 </p>
 
 ```bash
@@ -35,6 +35,20 @@ evidence instead: the real source, the live browser, and the numbers that prove 
 two agree.
 
 ---
+
+## How it works
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/pipeline-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/pipeline.svg">
+    <img src="assets/pipeline.svg" width="848" alt="Pipeline: a URL is checked by the SSRF guard, opened in Playwright, its responses stored, its references rewritten into an offline tree; static and runtime passes read tokens, motion, states and limits; the outputs are a reference folder and a fidelity score">
+  </picture>
+</p>
+
+Nine steps, one page load for steps 5 to 7. Every step writes a file; a step that
+cannot run is named in `manifest.json` and the run exits `3` instead of pretending
+the capture is whole.
 
 ## Why not just screenshot it
 
@@ -132,19 +146,55 @@ ancestors cannot render.
 
 ## Proof
 
-Numbers from the checked-in fixture and from real captures, reproducible with
-`npm test` and the smoke gates:
+<p align="center">
+  <img src="assets/proof-govuk.png" width="848" alt="Left: gov.uk captured live. Right: the same page replayed from the captured tree with every off-origin request aborted. The two panels show the same header, hero, colours and type.">
+</p>
 
-- **Offline replay is byte-identical.** The captured fixture, replayed from its own
-  tree with the network off, produces the same PNG: 159,746 bytes,
-  `status: identical`, `diffRatio: 0`. Perturbing one token in the replica
-  (`--radius: 0.5rem` to `24px`) moves the ratio to `0.0006` across 30 clusters, so
-  the score reads pixels rather than returning zero.
-- **The capture names its own gaps.** Replaying `gsap.com` scored 2.32% across 11
+Both panels are `gov.uk`, captured on 2026-10-29 with one command. The left is a
+screenshot of the live site. The right is the tree the capture wrote, served from a
+local directory with every off-origin request aborted, opened in a fresh browser.
+
+**The right panel is not a rebuild.** It is the captured HTML, CSS, fonts and images,
+opened offline: 618 elements, 4 of 4 images, 0 external requests. That is the
+difference this tool exists to make. The folder is the page, not a picture of it.
+
+Reproduce it:
+
+```bash
+node scripts/inspect.mjs --url https://www.gov.uk/ --out ./refs/gov --quick
+# serve ./refs/gov/tree/www.gov.uk, block the network, open /
+```
+
+Numbers from the same run and from the checked-in fixture:
+
+- **Offline replay of a fully DOM-representable page is byte-identical.** The test
+  fixture replayed from its own tree with the network off produces the same PNG:
+  159,746 bytes, `status: identical`, `diffRatio: 0`. Perturbing one token in the
+  replica (`--radius: 0.5rem` to `24px`) moves the ratio to `0.0006` across 30
+  clusters, so the score reads pixels rather than returning zero.
+- **A capture reports its own gaps.** Replaying `gsap.com` scored 2.32% across 11
   clusters, and `unproducible.json` had already listed six `<video>` regions and
   three auth-gated ones before any pixel was compared.
-- **486 tests, 0 failures**, plus four smoke gates that capture a real page and
-  replay it offline in CI on Linux and Windows, Node 20 and 22.
+- **507 tests, 0 failures**, plus smoke gates that capture a real page and replay it
+  offline in CI on Linux and Windows, Node 20 and 22.
+
+### What a capture still cannot hold
+
+A client-rendered page is the honest limit, and `linear.app` is the example. Its
+hero is an `<img loading="lazy">` that the browser only requests when it scrolls into
+view, and its content is assembled by JavaScript after hydration. A capture taken
+today stores 617 files and replays 4767 elements with the correct background, fonts
+and header, and the hero stays empty.
+
+Two things were fixed because of it, and both were real defects rather than limits:
+
+- An extensionless CDN image was written as `index.html`, so every replay served an
+  image as `text/html` and the browser refused it. A file now takes its extension
+  from the content type, and a replay went from 0 of 38 images to 17 of 38.
+- An absolute same-origin URL (`https://site/img.png` inside `https://site/`) was
+  left untouched, which made it a live request during an "offline" replay. Only
+  document-relative references are left alone now, and one capture went from 18
+  external requests to 2.
 
 What is deliberately not claimed: scroll motion is sampled at discrete offsets, a
 `@keyframes` the engine never started is reported as declared rather than measured,

@@ -191,6 +191,68 @@ async function launchOrHint() {
 
 
 // Bug 3 fix: use page.mouse.wheel() in 120px increments instead of window.scrollTo().
+/**
+ * Bring lazy content into existence before anything is captured.
+ *
+ * A page that marks an image `loading="lazy"` never requests it until it comes
+ * near the viewport, so a capture that only screenshots the first screen holds
+ * markup for images it never received. Replaying that tree offline shows the
+ * layout and none of the pictures: on linear.app 17 of 38 images were absent
+ * from the store and the offline replay rendered an empty hero.
+ *
+ * The walk scrolls the whole document once, in viewport-sized steps, and waits
+ * for the images it just triggered. It is deliberately not the screenshot pass:
+ * that one has to stop at each position for 1.5s and take a picture, which is
+ * the wrong cost for a step whose only job is to make the requests happen.
+ *
+ * Returns what it observed, so a capture can report how much of the page it had
+ * to wake up rather than pretending the first screen was the whole page.
+ */
+export async function primeLazyContent(page, { viewport, maxSteps = 60, settleMs = 250 } = {}) {
+  const before = await page.evaluate(() => ({
+    images: document.images.length,
+    pending: [...document.images].filter((i) => !i.complete || i.naturalWidth === 0).length,
+  }));
+
+  const height = await page.evaluate(() => Math.max(
+    document.documentElement.scrollHeight,
+    document.body ? document.body.scrollHeight : 0,
+  ));
+  const step = Math.max(200, Math.floor((viewport?.height || 900) * 0.9));
+  let y = 0;
+  let steps = 0;
+  while (y < height && steps < maxSteps) {
+    y += step;
+    steps++;
+    await page.evaluate((to) => window.scrollTo(0, to), y);
+    await page.waitForTimeout(settleMs);
+  }
+  // One settle at the bottom, where the last batch of requests lands.
+  await page.waitForTimeout(settleMs);
+
+  // The walk starts the requests; it does not wait for them. A page that
+  // swaps `src` only after its own IntersectionObserver fires is still loading
+  // when the loop moves on, so the last viewport's images were never captured.
+  // Wait for the images that exist to finish decoding, with a ceiling so a
+  // broken one cannot hold the capture open.
+  await page.evaluate((ms) => Promise.race([
+    Promise.all([...document.images]
+      .filter((i) => i.loading !== 'lazy' || i.getBoundingClientRect().top < window.innerHeight * 2)
+      .map((i) => (i.complete ? null : new Promise((r) => { i.onload = i.onerror = r; })))),
+    new Promise((r) => setTimeout(r, ms)),
+  ]), 8000);
+  await page.waitForTimeout(settleMs);
+
+  const after = await page.evaluate(() => ({
+    images: document.images.length,
+    pending: [...document.images].filter((i) => !i.complete || i.naturalWidth === 0).length,
+  }));
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.waitForTimeout(150);
+
+  return { ...after, steps, height, added: after.images - before.images };
+}
+
 async function scrollPass(page, viewport, docHeight, screenshotDir) {
   if (!viewport) return [];
   const positions = stepScrollPositions(viewport, 0.8, docHeight);
@@ -282,6 +344,16 @@ async function main() {
   }
 
   const { page, a11y, dom, docHeight, net, con, screenshotDir } = primary;
+
+  // Before anything is read off the page: a lazy image that never entered the
+  // viewport was never requested, so its bytes are not in the store and the
+  // written tree cannot show it. Measured on linear.app, 17 of 38 images were
+  // missing for exactly this reason and the offline replay rendered a blank hero.
+  const lazy = await primeLazyContent(page, { viewport: args.viewport });
+  if (lazy.added > 0 || lazy.pending > 0) {
+    dim(`Lazy pass: ${lazy.steps} steps, ${lazy.added} elements added, ${lazy.pending} still pending`);
+  }
+
   const canvasInfo = await detectCanvas(page);
   const interactive = extractInteractiveElements(a11y);
   const tokenCounts = await tokenPass(page, outDir, { scope: args.targets });
@@ -307,11 +379,19 @@ async function main() {
     ...capture,
     redirects: store.redirects,
     blocked: interceptor.blocked(),
-    tree: { written: tree.written, bytes: tree.bytes, unrewritten: tree.missed.length },
+    // The URLs, not only the count. A bare number tells a reader that something
+    // in the tree still points at the network and gives them nothing to act on;
+    // the list names the reference so it can be chased or accepted.
+    tree: {
+      written: tree.written,
+      bytes: tree.bytes,
+      unrewritten: tree.missed.length,
+      unrewrittenRefs: tree.missed.slice(0, 200).map((m) => m.url),
+    },
   }, null, 2));
   artifacts.push(await fileMeta(join(outDir, 'capture.json')));
   dim(`Capture: ${tree.written} files, ${Math.round(tree.bytes / 1024)}KB, ${store.missing.length} missing, ${interceptor.blockedCount()} blocked redirects`);
-  if (tree.missed.length) dim(`Unrewritten references: ${tree.missed.length} (see capture.json)`);
+  if (tree.missed.length) dim(`Unrewritten references: ${tree.missed.length} (listed in capture.json tree.unrewrittenRefs)`);
   // The tree is on disk, so the bodies are dead weight from here. Left attached the
   // interceptor re-enters on every later pass and refills a store nothing reads
   // again, which is how peak RSS passed twice the size of the capture it held.

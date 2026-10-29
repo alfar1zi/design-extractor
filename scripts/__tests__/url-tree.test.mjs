@@ -172,3 +172,24 @@ test('refInsideHostDir rejects only a reference that climbs past the host', () =
   assert.equal(refInsideHostDir('x.test/index.html', '../cdn.test/i.png'), false);
   assert.equal(refInsideHostDir('x.test/a/index.html', '../../cdn.test/i.png'), false);
 });
+test('an extensionless path served as an image is named after its type, not index.html', () => {
+  // A CDN image whose path carries no extension arrived as image/webp and was
+  // written as `.../index.html`. Every replay then served it as text/html and the
+  // browser refused the bytes, so a captured page rendered with no pictures at
+  // all while the file sat on disk looking present.
+  const { rel, isIndex } = urlToTreePath('https://x.test/cdn/id/f=auto,fit=scale-down', { contentType: 'image/webp' });
+  assert.equal(isIndex, false);
+  assert.match(rel, /\.webp$/);
+  assert.doesNotMatch(rel, /index\.html$/);
+});
+
+test('an extensionless path served as html is still a document', () => {
+  const { rel, isIndex } = urlToTreePath('https://x.test/about', { contentType: 'text/html; charset=utf-8' });
+  assert.equal(isIndex, true);
+  assert.match(rel, /index\.html$/);
+});
+
+test('a document navigation is a document even when the path looks like a file', () => {
+  const { isIndex } = urlToTreePath('https://x.test/feed.json', { contentType: 'application/json', isDocument: true });
+  assert.equal(isIndex, true);
+});

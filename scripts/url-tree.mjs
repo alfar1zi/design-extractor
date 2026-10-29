@@ -154,11 +154,22 @@ export function urlToTreePath(url, opts = {}) {
   const lastRaw = rawSegments[rawSegments.length - 1];
   const hasFilename = Boolean(lastRaw && PLAIN_EXT.test(`.${lastRaw.slice(lastRaw.lastIndexOf('.') + 1).toLowerCase()}`) && lastRaw.includes('.'));
 
-  // A path with a real extension is a file; anything else is a document to be named index.html.
-  if (hasFilename && !isDocument) {
+  // A path with a real extension is a file; anything else is a document to be
+  // named index.html - unless the response told us what it is. A CDN image at
+  // `.../id/f=auto,fit=scale-down` has no extension in its path and arrives as
+  // `image/webp`; naming that `index.html` writes a document whose body is an
+  // image, and every replay serves it as text/html and renders nothing. The
+  // content type is evidence about the bytes, so it decides the name.
+  const typedFile = !isDocument && ext !== '.bin' && ext !== '.html'
+    && Boolean(contentType) && !/^text\/html/i.test(String(contentType));
+  if ((hasFilename || typedFile) && !isDocument) {
     const { base, ext: nameExt } = splitName(segments[segments.length - 1]);
+    // A name the path did not carry an extension for takes the one the content
+    // type gave it, or the file lands on disk with no type for the replay server
+    // to send and the browser refuses the bytes.
+    const finalExt = nameExt || (typedFile ? ext : '');
     return {
-      rel: assertSafeRel(joinRel([...prefix, ...segments.slice(0, -1), `${base}${variant}${nameExt}`])),
+      rel: assertSafeRel(joinRel([...prefix, ...segments.slice(0, -1), `${base}${variant}${finalExt}`])),
       ext,
       isIndex: false,
     };

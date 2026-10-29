@@ -238,7 +238,7 @@ async function main() {
   }
   //    The social preview is uploaded to GitHub, not linked from markdown, so it
   //    is allowed to exist without a reference. Every other asset must be used.
-  const DECLARED_ASSETS = new Set(['social-preview.png', 'social-preview.svg', 'logo.png', 'logo-dark.png']);
+  const DECLARED_ASSETS = new Set(['social-preview.png', 'social-preview.svg', 'logo.png', 'logo-light.png']);
   const assetDir = join(REPO, 'assets');
   if (await exists(assetDir)) {
     for (const f of await readdir(assetDir)) {
