@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="848" height="470" viewBox="0 0 848 470" role="img" aria-label="design-extractor pipeline: a URL is captured by the browser, the response store feeds a rewritten offline tree, behaviour passes write JSON artifacts, and a fidelity score compares the rebuild against the capture">
+  <title>design-extractor pipeline</title>
+
+  <rect width="848" height="470" fill="#0d1117"/>
+
+  <text x="32" y="40" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="600" fill="#e6edf3">design-extractor pipeline</text>
+  <text x="32" y="60" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#8b949e">one URL in, a self-contained reference folder out</text>
+
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#79c0ff"/>
+    </marker>
+  </defs>
+
+  <!-- Row 1: capture -->
+  <rect x="32" y="88" width="164" height="96" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="48" y="114" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#e6edf3">1. URL</text>
+  <text x="48" y="136" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b949e">https://site/</text>
+  <text x="48" y="158" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">SSRF guard first</text>
+
+  <rect x="228" y="88" width="164" height="96" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="244" y="114" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#e6edf3">2. Browser</text>
+  <text x="244" y="136" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">Playwright, real input</text>
+  <text x="244" y="158" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">scroll, click, resize</text>
+
+  <rect x="424" y="88" width="164" height="96" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="440" y="114" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#e6edf3">3. Responses</text>
+  <text x="440" y="136" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">every body kept</text>
+  <text x="440" y="158" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">capture.json audit</text>
+
+  <rect x="620" y="88" width="196" height="96" rx="8" fill="#161b22" stroke="#79c0ff"/>
+  <text x="636" y="114" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#e6edf3">4. Offline tree</text>
+  <text x="636" y="136" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">refs rewritten</text>
+  <text x="636" y="158" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">opens with no network</text>
+
+  <!-- connectors row 1 -->
+  <line x1="196" y1="136" x2="222" y2="136" stroke="#79c0ff" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="392" y1="136" x2="418" y2="136" stroke="#79c0ff" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="588" y1="136" x2="614" y2="136" stroke="#79c0ff" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- row 1 to row 2 -->
+  <line x1="718" y1="184" x2="718" y2="214" stroke="#79c0ff" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- Row 2: analysis passes -->
+  <rect x="32" y="220" width="252" height="96" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="48" y="246" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#e6edf3">5. Static read</text>
+  <text x="48" y="268" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">tokens from the cascade</text>
+  <text x="48" y="288" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">components, dark theme</text>
+
+  <rect x="316" y="220" width="252" height="96" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="332" y="246" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#e6edf3">6. Runtime read</text>
+  <text x="332" y="268" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">motion: 4 sources</text>
+  <text x="332" y="288" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">states, hover, a11y</text>
+
+  <rect x="600" y="220" width="216" height="96" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="616" y="246" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#e6edf3">7. Limits</text>
+  <text x="616" y="268" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">unproducible.json</text>
+  <text x="616" y="288" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">per element, with a crop</text>
+
+  <!-- row 2 to row 3 -->
+  <line x1="718" y1="316" x2="718" y2="346" stroke="#79c0ff" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <!-- Row 3: outputs -->
+  <rect x="32" y="352" width="380" height="86" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="48" y="378" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#e6edf3">8. reference folder</text>
+  <text x="48" y="400" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b949e">live/ tree/ tokens.json motion.json</text>
+  <text x="48" y="420" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="11" fill="#8b949e">states.json components.*.json unproducible.json</text>
+
+  <rect x="444" y="352" width="372" height="86" rx="8" fill="#161b22" stroke="#3fb950"/>
+  <text x="460" y="378" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="14" font-weight="600" fill="#e6edf3">9. Rebuild score</text>
+  <text x="460" y="400" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">replay the tree offline, diff the pixels</text>
+  <text x="460" y="420" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#8b949e">fidelity.json: diffRatio, worst box, clusters</text>
+
+  <!-- row 2 connector into row 3 -->
+  <line x1="158" y1="316" x2="158" y2="346" stroke="#79c0ff" stroke-width="1.5" marker-end="url(#a)"/>
+  <line x1="472" y1="316" x2="472" y2="346" stroke="#79c0ff" stroke-width="1.5" marker-end="url(#a)"/>
+
+  <text x="32" y="458" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#6e7681">Steps 5 to 7 run on one page load. Every step writes evidence; a pass that fails is named in manifest.json and the run exits 3.</text>
+</svg>

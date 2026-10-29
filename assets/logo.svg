@@ -1,10 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="design-extractor: a page being inspected through a magnifier">
   <title>design-extractor</title>
-  <rect width="512" height="512" rx="112" fill="#ffffff"/>
-  <rect x="96" y="120" width="248" height="272" rx="28" fill="none" stroke="#1f2328" stroke-width="20"/>
-  <line x1="136" y1="188" x2="304" y2="188" stroke="#1f2328" stroke-width="20" stroke-linecap="round"/>
-  <line x1="136" y1="244" x2="264" y2="244" stroke="#59636e" stroke-width="20" stroke-linecap="round"/>
-  <line x1="136" y1="300" x2="288" y2="300" stroke="#59636e" stroke-width="20" stroke-linecap="round"/>
-  <circle cx="316" cy="300" r="76" fill="#ffffff" fill-opacity="0.92" stroke="#0969da" stroke-width="22"/>
-  <line x1="372" y1="356" x2="424" y2="408" stroke="#0969da" stroke-width="26" stroke-linecap="round"/>
+  <rect width="512" height="512" rx="112" fill="#0d1117"/>
+  <g fill="none" stroke="#ffffff" stroke-width="18" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="92" y="104" width="272" height="304" rx="26"/>
+    <line x1="140" y1="168" x2="316" y2="168"/>
+    <line x1="140" y1="224" x2="268" y2="224" stroke="#8b949e"/>
+    <line x1="140" y1="280" x2="292" y2="280" stroke="#8b949e"/>
+  </g>
+  <g fill="none" stroke="#ffffff" stroke-width="20" stroke-linecap="round">
+    <circle cx="330" cy="318" r="74" fill="#0d1117"/>
+    <line x1="384" y1="372" x2="432" y2="420"/>
+  </g>
+  <circle cx="330" cy="318" r="26" fill="#ffffff"/>
 </svg>

@@ -85,6 +85,42 @@ test('a same-origin reference survives byte-for-byte so a bundle runtime can pai
   assert.deepEqual(missed, [], 'a same-origin reference is left in place, not reported as a miss');
 });
 
+test('an absolute same-origin url is rewritten, because it is a request to the real site', () => {
+  // A captured page referenced https://x.test/a.png from https://x.test/ and the
+  // rewriter left it alone, on the reasoning that same-origin means already
+  // correct. It is correct only for a server that answers for that host. Replayed
+  // from a local directory it is a live request: one capture loaded 0 of 38
+  // images offline and issued 18 requests to the network it was supposed to need
+  // none of.
+  const missed = [];
+  const out = rewriteHtml('<img src="https://x.test/a.png">', {
+    baseUrl: 'https://x.test/',
+    resolver: map({ 'https://x.test/a.png': 'a.png' }),
+    collect: (m) => missed.push(...m),
+  });
+  assert.match(out, /src="a\.png"/);
+  assert.deepEqual(missed, []);
+});
+
+test('an absolute same-origin url with no captured body is reported, not left pointing at the site', () => {
+  const missed = [];
+  const out = rewriteHtml('<img src="https://x.test/never-captured.png">', {
+    baseUrl: 'https://x.test/',
+    resolver: map({}),
+    collect: (m) => missed.push(...m),
+  });
+  assert.match(out, /src="https:\/\/x\.test\/never-captured\.png"/, 'left as authored');
+  assert.deepEqual(missed.map((m) => m.url), ['https://x.test/never-captured.png'], 'but named as a miss');
+});
+
+test('a protocol-relative url is not treated as a relative path', () => {
+  const out = rewriteHtml('<img src="//cdn.test/a.png">', {
+    baseUrl: 'https://x.test/',
+    resolver: map({ 'https://cdn.test/a.png': '../cdn.test/a.png' }),
+  });
+  assert.match(out, /src="\.\.\/cdn\.test\/a\.png"/);
+});
+
 test('a same-origin srcset is left alone too', () => {
   const out = rewriteHtml('<img srcset="/i.png 1x, /i.png 2x">', { baseUrl: 'https://x.test/', resolver: map({}) });
   assert.equal(out, '<base href="./"><img srcset="/i.png 1x, /i.png 2x">');
