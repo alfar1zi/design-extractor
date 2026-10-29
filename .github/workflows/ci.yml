@@ -34,7 +34,41 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium  # required: css-animation-extract.test.mjs launches a real browser
-      - run: npm test
+
+      # The runner keeps the full log, but a maintainer without admin rights
+      # cannot download it, so a red Windows job was undebuggable from outside.
+      # The TAP stream and the runner's own environment go up as an artifact on
+      # failure only: the log names the failing test, the environment explains
+      # why this OS differs.
+      - name: test
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test-output.tap
+
+      - name: environment
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo "node: $(node --version)"
+            echo "npm: $(npm --version)"
+            echo "os: $RUNNER_OS"
+            echo "arch: $RUNNER_ARCH"
+            node -p "process.platform + ' ' + process.version + ' ' + process.arch"
+          } > environment.txt
+          node -e "console.log(require('playwright/package.json').version)" > playwright-version.txt || true
+
+      - name: upload failure evidence
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: test-failure-${{ matrix.node }}-${{ matrix.os }}
+          path: |
+            test-output.tap
+            environment.txt
+            playwright-version.txt
+          retention-days: 14
 
   smoke:
     name: repository gates
