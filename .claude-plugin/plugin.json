@@ -1,10 +1,20 @@
 {
   "name": "design-extractor",
   "version": "0.2.0",
-  "description": "Capture 1:1 website design references for AI agents.",
-  "author": { "name": "alfar1zi", "url": "https://github.com/alfar1zi" },
+  "description": "Reverse-engineer a website's design system into an offline-reproducible reference for AI agents.",
+  "author": {
+    "name": "alfar1zi",
+    "url": "https://github.com/alfar1zi"
+  },
   "license": "MIT",
   "repository": "https://github.com/alfar1zi/design-extractor",
   "homepage": "https://github.com/alfar1zi/design-extractor",
-  "keywords": ["design", "playwright", "screenshot", "css-tokens", "a11y", "agent-skill"]
+  "keywords": [
+    "agent-skills",
+    "design-system",
+    "design-tokens",
+    "playwright",
+    "reverse-engineering",
+    "motion"
+  ]
 }

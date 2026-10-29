@@ -187,8 +187,35 @@ async function main() {
     }
   }
 
+  // 8. The repository page and the manifests say the same thing. GitHub's
+  //    description, topics and package keywords are the text a search engine and
+  //    an agent read first, and they drifted apart the moment they were edited in
+  //    two places: the live description still advertised Node 18 while
+  //    engines.node said 20. Checked against a versioned file, not the API.
+  let meta = null;
+  try { meta = JSON.parse(await readFile(join(REPO, '.github', 'repository-metadata.json'), 'utf8')); }
+  catch (e) { problems.push(`.github/repository-metadata.json: ${e.code === 'ENOENT' ? 'missing' : 'does not parse'}`); }
+  if (meta) {
+    const desc = String(meta.description || '');
+    // GitHub truncates the description in search results around 160 characters.
+    if (desc.length < 40) problems.push('repository description is shorter than 40 characters; say what it does');
+    if (desc.length > 160) problems.push(`repository description is ${desc.length} characters; keep it under 160 so search results do not truncate it`);
+    if (!Array.isArray(meta.topics) || meta.topics.length < 5) problems.push('repository topics: at least 5 are needed to classify the repo');
+    else if (meta.topics.length > 20) problems.push(`repository topics: GitHub allows 20, this file has ${meta.topics.length}`);
+    else {
+      for (const t of meta.topics) {
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(t) || t.length > 35) problems.push(`repository topic ${JSON.stringify(t)} is not a valid GitHub topic`);
+      }
+    }
+
+    const pkg = JSON.parse(await readFile(join(REPO, 'package.json'), 'utf8'));
+    if (!pkg.description) problems.push('package.json has no description; npm search shows nothing');
+    else if (pkg.description.length > 160) problems.push(`package.json description is ${pkg.description.length} characters; keep it under 160`);
+    if (!Array.isArray(pkg.keywords) || pkg.keywords.length < 5) problems.push('package.json needs at least 5 keywords for npm search');
+  }
+
   if (problems.length === 0) {
-    process.stdout.write(`OK: ${modules.length} modules parse, ${documented.size} documented flags all exist, root is ${rootMd.join(' + ')}, no em dashes\n`);
+    process.stdout.write(`OK: ${modules.length} modules parse, ${documented.size} documented flags all exist, root is ${rootMd.join(' + ')}, no em dashes, repository metadata is consistent\n`);
     return;
   }
   for (const p of problems) process.stdout.write(`error: ${p}\n`);

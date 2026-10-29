@@ -1,13 +1,7 @@
 ---
 name: design-extractor
-description: >
-  Stop copying pixels. Screenshots miss the motion. Extract the actual source,
-  computed tokens, and runtime behavior for AI agents. Downloads source via
-  saveweb2zip, runs Playwright to extract screenshots, a11y tree, resolved CSS
-  tokens, motion presence, and interaction data into a structured output folder.
-  Invoke when asked to capture, clone, reference, or reverse-engineer a site's
-  design. Do NOT use for code generation, content extraction, or SEO tasks.
-argument-hint: "[url] [--out ./refs/name]"
+description: Reverse-engineer a live website into a design system an agent can rebuild from. Captures the real source, the resolved CSS cascade, design tokens, motion tracks (GSAP, scroll-linked, typing), hover and focus states with measured timing, framework components, and an offline-replayable copy of every file. Use when asked to clone, capture, reference, study, or reverse-engineer a site's design, to extract a design system or token set from a URL, or to check how a page animates or responds to interaction. Do NOT use for text-only content extraction, SEO analysis, or one-off documentation lookups.
+argument-hint: "[url] [--out ./refs/name] [--target <css>]"
 license: MIT
 ---
 
