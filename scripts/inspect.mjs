@@ -2,7 +2,7 @@
 // inspect.mjs - Playwright runtime capture for the design-extractor skill.
 // Playwright is lazy-imported so pure helpers unit-test without the browser binary.
 
-import { mkdir, writeFile, stat, realpath } from 'node:fs/promises';
+import { mkdir, writeFile, stat, realpath, readFile } from 'node:fs/promises';
 import { resolve, join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
@@ -28,6 +28,12 @@ import { recordPass } from './record-pass.mjs';
 // Re-exported so a consumer reaches it from the entry point.
 export { scanAnimationLibs };
 
+// Read from package.json rather than a constant: a version that appears in two
+// places is a version that disagrees with itself after one release.
+const VERSION = JSON.parse(
+  await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
+
 const DEFAULT_VIEWPORT = { width: 1440, height: 900 };
 const TABLET = { width: 768, height: 1024 };
 const MOBILE = { width: 375, height: 812 };
@@ -47,7 +53,7 @@ export function parseArgs(argv) {
   const out = {
     url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: 30, fidelity: null,
     scroll: true, interactions: true, hover: true, states: true, sweep: true, siteDir: null,
-    recordVideo: false, recordHoverVideo: false, allowPrivate: false, help: false,
+    recordVideo: false, recordHoverVideo: false, allowPrivate: false, help: false, version: false,
     sourcemap: false, targets: [], forceTree: false,
   };
   for (let i = 0; i < argv.length; i++) {
@@ -75,6 +81,7 @@ export function parseArgs(argv) {
       case '--allow-private': out.allowPrivate = true; break;
       case '--force-tree': out.forceTree = true; break;
       case '-h': case '--help': out.help = true; break;
+      case '-V': case '--version': out.version = true; break;
       case '--quick':
         out.scroll = false;
         out.interactions = false;
@@ -106,7 +113,7 @@ export function parseArgs(argv) {
       default: throw new Error(`unknown flag: ${a}`);
     }
   }
-  if (out.help) return out;
+  if (out.help || out.version) return out;
   if (!out.url) throw new Error('--url is required');
   try { new URL(out.url); } catch { throw new Error('--url must be a valid URL'); }
   if (!Number.isFinite(out.timeout) || out.timeout <= 0) throw new Error('--timeout must be a positive number');
@@ -143,7 +150,7 @@ const info = (m) => out(wrap('36', m));
 const dim  = (m) => out(wrap('90', m));
 const ok   = (m) => out(wrap('32', m));
 
-const HELP = `design-extractor-inspect -- capture runtime state of a live page via Playwright
+const HELP = `design-extractor-inspect ${VERSION} -- capture runtime state of a live page via Playwright
 Usage: design-extractor-inspect --url <URL> [options]
 Options:
   --url <URL>          target page (required)
@@ -163,6 +170,7 @@ Options:
   --record-hover-video record hover pass as webm (one clip per element)
   --allow-private      allow private/loopback URLs (SSRF guard off)
   --force-tree         overwrite tree/ even when this tool did not write it
+  -V, --version             print the version and exit
   -h, --help           show this help
 Outputs: screenshots/, a11y-tree.json, a11y-interactive.json, tokens.json, dom.html,
          network.json, console.json, interactions.json, hover.json, states.json, motion.json,
@@ -220,6 +228,7 @@ async function main() {
   try { args = parseArgs(normalizeArgv(process.argv.slice(2))); }
   catch (e) { err(e.message); process.exit(2); }
   if (args.help) { process.stdout.write(HELP); return; }
+  if (args.version) { process.stdout.write(`${VERSION}\n`); return; }
 
   try { await assertSafeUrl(args.url, { allowPrivate: !!args.allowPrivate }); }
   catch (e) { err(e.message); process.exit(2); }

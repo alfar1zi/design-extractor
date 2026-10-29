@@ -106,6 +106,18 @@ async function treeFiles(dir = REPO, out = []) {
   return out;
 }
 
+/** Whether any other text file mentions a path, so an asset used only by the
+ * skill or the tests is not reported as dead. */
+async function referencedElsewhere(needle) {
+  for (const file of await treeFiles()) {
+    if (file.endsWith('README.md')) continue;
+    const bytes = await readFile(file);
+    if (bytes.includes(0)) continue;
+    if (bytes.toString('utf8').includes(needle)) return true;
+  }
+  return false;
+}
+
 async function exists(p) {
   try { await stat(p); return true; } catch { return false; }
 }
@@ -212,6 +224,26 @@ async function main() {
     if (!pkg.description) problems.push('package.json has no description; npm search shows nothing');
     else if (pkg.description.length > 160) problems.push(`package.json description is ${pkg.description.length} characters; keep it under 160`);
     if (!Array.isArray(pkg.keywords) || pkg.keywords.length < 5) problems.push('package.json needs at least 5 keywords for npm search');
+  }
+
+  // 9. Every shipped asset is referenced, and every image the README points at
+  //    exists. An unreferenced asset is 300 KB of dead weight in every clone; a
+  //    referenced one that is missing renders as a broken image on the repo page.
+  const readme = await readFile(join(REPO, 'README.md'), 'utf8');
+  for (const m of readme.matchAll(/(?:src|srcset)="([^"]+\.(?:svg|png|jpg|webp|gif))"/g)) {
+    if (/^(?:https?:|\.\.\/)/.test(m[1])) continue;   // remote, or a path GitHub resolves (badges)
+    if (!(await exists(join(REPO, m[1])))) problems.push(`README.md points at ${m[1]}, which is not in the repository`);
+  }
+  //    The social preview is uploaded to GitHub, not linked from markdown, so it
+  //    is allowed to exist without a reference. Every other asset must be used.
+  const DECLARED_ASSETS = new Set(['social-preview.png', 'social-preview.svg', 'logo.png', 'logo-dark.png']);
+  const assetDir = join(REPO, 'assets');
+  if (await exists(assetDir)) {
+    for (const f of await readdir(assetDir)) {
+      if (DECLARED_ASSETS.has(f)) continue;
+      const used = readme.includes(`assets/${f}`) || (await referencedElsewhere(`assets/${f}`));
+      if (!used) problems.push(`assets/${f} is referenced nowhere; delete it or document it`);
+    }
   }
 
   if (problems.length === 0) {
