@@ -76,7 +76,18 @@ test('a root reached through a symlink is cleared without destroying the target'
   const real = await tempDir(t);
   const link = join(real, '..', `de-link-${process.pid}`);
   await writeFile(join(real, 'important.txt'), 'keep me');
-  await symlink(real, link, 'dir');
+  try {
+    await symlink(real, link, 'dir');
+  } catch (e) {
+    // A Windows runner without Developer Mode or admin cannot create a symlink
+    // (EPERM). Skipping is honest here; failing would report a platform
+    // permission as a bug in the tree writer.
+    if (e.code === 'EPERM' || e.code === 'EACCES') {
+      t.skip('this host cannot create directory symlinks');
+      return;
+    }
+    throw e;
+  }
 
   const store = createCaptureStore();
   put(store, 'https://x.test/a.css', 'body{}', 'text/css');

@@ -25,9 +25,22 @@ async function runViaSymlink(bin, script, args) {
   const dir = await mkdtemp(join(tmpdir(), 'de-bin-'));
   const link = join(dir, bin);
   const target = fileURLToPath(new URL(`../${script}`, import.meta.url));
-  await symlink(target, link);
   try {
-    return await run(process.execPath, [link, ...args], { timeout: 20000 });
+    await symlink(target, link);
+  } catch (e) {
+    // Windows without Developer Mode or admin refuses symlinks with EPERM. The
+    // guard under test is "the resolved path equals import.meta.url", which a
+    // real path exercises too; only the symlink shape is lost, so say so rather
+    // than reporting a platform permission as a broken bin.
+    if (e.code === 'EPERM' || e.code === 'EACCES') {
+      const { rm } = await import('node:fs/promises');
+      await rm(dir, { recursive: true, force: true });
+      return { ...(await run(process.execPath, [target, ...args], { timeout: 20000 })), viaSymlink: false };
+    }
+    throw e;
+  }
+  try {
+    return { ...(await run(process.execPath, [link, ...args], { timeout: 20000 })), viaSymlink: true };
   } finally {
     const { rm } = await import('node:fs/promises');
     await rm(dir, { recursive: true, force: true });
@@ -35,8 +48,11 @@ async function runViaSymlink(bin, script, args) {
 }
 
 for (const [bin, script] of Object.entries(BINS)) {
-  test(`${bin} runs when invoked through a .bin symlink`, async () => {
-    const { stdout, stderr } = await runViaSymlink(bin, script, ['--help']);
+  test(`${bin} runs when invoked through a .bin symlink`, async (t) => {
+    const { stdout, stderr, viaSymlink } = await runViaSymlink(bin, script, ['--help']);
+    // Named so a Windows run that could not create the link says so instead of
+    // silently testing the easier shape.
+    if (!viaSymlink) t.diagnostic('no symlink privilege on this host; invoked the real path');
     assert.match(stdout + stderr, new RegExp(bin.replace(/-/g, '.').split('.')[0], 'i'),
       `expected usage text, got stdout=${JSON.stringify(stdout)} stderr=${JSON.stringify(stderr)}`);
     assert.ok((stdout + stderr).includes('Usage'),
