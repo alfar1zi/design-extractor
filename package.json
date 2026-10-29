@@ -54,6 +54,8 @@
     "install.sh",
     "install.ps1",
     "skill.json",
+    "SECURITY.md",
+    "CITATION.cff",
     "README.md",
     "LICENSE"
   ],

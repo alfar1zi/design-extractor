@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use design-extractor in published work, cite it as below."
+title: "design-extractor"
+abstract: "Reverse-engineers a live website into a design system an agent can rebuild from: real source, resolved CSS cascade, design tokens, motion tracks, interaction states, framework components, and an offline-replayable copy of every captured file, scored against the original with a pixel diff."
+type: software
+license: MIT
+repository-code: "https://github.com/alfar1zi/design-extractor"
+url: "https://github.com/alfar1zi/design-extractor"
+authors:
+  - given-names: alfar1zi
+    alias: alfar1zi
+    website: "https://github.com/alfar1zi"
+keywords:
+  - agent skills
+  - design system extraction
+  - design tokens
+  - web reverse engineering
+  - browser automation
+  - motion capture
+  - playwright

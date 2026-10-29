@@ -19,8 +19,10 @@ const exec = promisify(execFile);
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // The root is a landing page, not a filing cabinet. Each extra .md there is one
-// more thing a visitor has to triage before they can install anything.
-const ROOT_MARKDOWN = ['README.md'];
+// more thing a visitor has to triage before they can install anything. The
+// exceptions are the files GitHub itself renders from a fixed path: a security
+// policy, a licence, and a citation block. Nothing else earns a root slot.
+const ROOT_MARKDOWN = ['README.md', 'SECURITY.md'];
 
 // Flags that belong to another tool and are documented as such. Every entry earns
 // its place: npm's own, git's, and the browser install the README quotes.
