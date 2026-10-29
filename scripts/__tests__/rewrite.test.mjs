@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 import { rewriteHtml, rewriteCss, rewriteJs, resolveAgainst } from '../rewrite.mjs';
 import { createCaptureStore } from '../capture-store.mjs';
 import { writeTree } from '../tree-writer.mjs';
@@ -225,6 +225,8 @@ test('a cross-origin reference resolves to a file inside the written tree', asyn
   assert.equal(ref.split('/').includes('..'), false, `reference climbs out of the tree: ${ref}`);
   // Resolves the way a browser would: against the document's own directory.
   const target = resolve(outDir, dirname(docRel), ref);
-  assert.ok(target.startsWith(resolve(outDir) + '/'), `${target} is outside the tree`);
+  // sep, not '/': on Windows the resolved root ends in a backslash and this
+  // containment check failed for every path that was correctly inside.
+  assert.ok(target.startsWith(resolve(outDir) + sep), `${target} is outside the tree`);
   assert.equal(await readFile(target, 'utf8'), 'body{}');
 });

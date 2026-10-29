@@ -14,6 +14,7 @@ async function shoot(dir, name, draw) {
     const page = await browser.newPage({ viewport: { width: 200, height: 100 } });
     await page.setContent('<body style="margin:0"></body>');
     await page.evaluate(draw);
+    await settle(page);
     await page.screenshot({ path: join(dir, name) });
   } finally {
     await browser.close();
@@ -30,13 +31,32 @@ async function shootMany(dir, shots) {
     const page = await browser.newPage({ viewport: { width: 200, height: 100 }, deviceScaleFactor: 1 });
     await page.setContent('<body style="margin:0"></body>');
     for (const [name, draw] of Object.entries(shots)) {
-      await page.evaluate(() => { document.body.innerHTML = ''; });
+      // replaceChildren, not innerHTML = '': assigning to document.body's own
+      // innerHTML replaces the body element, so the next draw ran with
+      // document.body === null and its background was never applied. Two shots
+      // then differed everywhere, the clusters merged into one, and the test
+      // failed about one run in eight.
+      await page.evaluate(() => { document.body.replaceChildren(); });
       await page.evaluate(draw.body, draw.args);
+      await settle(page);
       await page.screenshot({ path: join(dir, name) });
     }
   } finally {
     await browser.close();
   }
+}
+
+/**
+ * Wait for the paint the draw just caused.
+ *
+ * A screenshot taken immediately after evaluate can land before the compositor
+ * has a frame to capture, and Chromium answers with
+ * `Protocol error (Page.captureScreenshot): Unable to capture screenshot`. That
+ * is a race in the test, not in the tool: it appeared about one run in eight,
+ * always on the first shot of a freshly launched browser.
+ */
+async function settle(page) {
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 }
 
 const blank = { body: () => { document.body.style.background = '#ff0000'; } };
