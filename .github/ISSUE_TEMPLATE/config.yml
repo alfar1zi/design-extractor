@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability
+    url: https://github.com/alfar1zi/design-extractor/security/advisories/new
+    about: Privately report an SSRF, path traversal or prompt-injection issue. Do not open a public issue.
+  - name: Read the artifact contract first
+    url: https://github.com/alfar1zi/design-extractor#what-you-get
+    about: Most "the capture is missing X" reports are answered by unproducible.json and capture.json.

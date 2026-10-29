@@ -19,12 +19,14 @@ const exec = promisify(execFile);
 const REPO = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // The root is a landing page, not a filing cabinet. Each extra .md there is one
-// more thing a visitor has to triage before they can install anything.
-const ROOT_MARKDOWN = ['README.md'];
+// more thing a visitor has to triage before they can install anything. The
+// exceptions are the files GitHub itself renders from a fixed path: a security
+// policy, a licence, and a citation block. Nothing else earns a root slot.
+const ROOT_MARKDOWN = ['README.md', 'SECURITY.md'];
 
 // Flags that belong to another tool and are documented as such. Every entry earns
 // its place: npm's own, git's, and the browser install the README quotes.
-const EXTERNAL_FLAGS = new Set(['--with-deps', '--yes', '--no-audit', '--no-fund', '--ignore-scripts', '--dry-run']);
+const EXTERNAL_FLAGS = new Set(['--with-deps', '--yes', '--no-audit', '--no-fund', '--ignore-scripts', '--dry-run', '--skill']);
 
 const CLI_SOURCES = ['scripts/cli.mjs', 'scripts/inspect.mjs', 'scripts/saveweb2zip.mjs'];
 
@@ -104,6 +106,18 @@ async function treeFiles(dir = REPO, out = []) {
     }
   }
   return out;
+}
+
+/** Whether any other text file mentions a path, so an asset used only by the
+ * skill or the tests is not reported as dead. */
+async function referencedElsewhere(needle) {
+  for (const file of await treeFiles()) {
+    if (file.endsWith('README.md')) continue;
+    const bytes = await readFile(file);
+    if (bytes.includes(0)) continue;
+    if (bytes.toString('utf8').includes(needle)) return true;
+  }
+  return false;
 }
 
 async function exists(p) {
@@ -187,8 +201,87 @@ async function main() {
     }
   }
 
+  // 8. The repository page and the manifests say the same thing. GitHub's
+  //    description, topics and package keywords are the text a search engine and
+  //    an agent read first, and they drifted apart the moment they were edited in
+  //    two places: the live description still advertised Node 18 while
+  //    engines.node said 20. Checked against a versioned file, not the API.
+  let meta = null;
+  try { meta = JSON.parse(await readFile(join(REPO, '.github', 'repository-metadata.json'), 'utf8')); }
+  catch (e) { problems.push(`.github/repository-metadata.json: ${e.code === 'ENOENT' ? 'missing' : 'does not parse'}`); }
+  if (meta) {
+    const desc = String(meta.description || '');
+    // GitHub truncates the description in search results around 160 characters.
+    if (desc.length < 40) problems.push('repository description is shorter than 40 characters; say what it does');
+    if (desc.length > 160) problems.push(`repository description is ${desc.length} characters; keep it under 160 so search results do not truncate it`);
+    if (!Array.isArray(meta.topics) || meta.topics.length < 5) problems.push('repository topics: at least 5 are needed to classify the repo');
+    else if (meta.topics.length > 20) problems.push(`repository topics: GitHub allows 20, this file has ${meta.topics.length}`);
+    else {
+      for (const t of meta.topics) {
+        if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(t) || t.length > 35) problems.push(`repository topic ${JSON.stringify(t)} is not a valid GitHub topic`);
+      }
+    }
+
+    const pkg = JSON.parse(await readFile(join(REPO, 'package.json'), 'utf8'));
+    if (!pkg.description) problems.push('package.json has no description; npm search shows nothing');
+    else if (pkg.description.length > 160) problems.push(`package.json description is ${pkg.description.length} characters; keep it under 160`);
+    if (!Array.isArray(pkg.keywords) || pkg.keywords.length < 5) problems.push('package.json needs at least 5 keywords for npm search');
+  }
+
+  // 9. Every shipped asset is referenced, and every image the README points at
+  //    exists. An unreferenced asset is 300 KB of dead weight in every clone; a
+  //    referenced one that is missing renders as a broken image on the repo page.
+  const readme = await readFile(join(REPO, 'README.md'), 'utf8');
+  for (const m of readme.matchAll(/(?:src|srcset)="([^"]+\.(?:svg|png|jpg|webp|gif))"/g)) {
+    if (/^(?:https?:|\.\.\/)/.test(m[1])) continue;   // remote, or a path GitHub resolves (badges)
+    if (!(await exists(join(REPO, m[1])))) problems.push(`README.md points at ${m[1]}, which is not in the repository`);
+  }
+  //    The social preview is uploaded to GitHub, not linked from markdown, so it
+  //    is allowed to exist without a reference. Every other asset must be used.
+  const DECLARED_ASSETS = new Set(['social-preview.png', 'social-preview.svg', 'logo.png', 'logo-dark.png']);
+  const assetDir = join(REPO, 'assets');
+  if (await exists(assetDir)) {
+    for (const f of await readdir(assetDir)) {
+      if (DECLARED_ASSETS.has(f)) continue;
+      const used = readme.includes(`assets/${f}`) || (await referencedElsewhere(`assets/${f}`));
+      if (!used) problems.push(`assets/${f} is referenced nowhere; delete it or document it`);
+    }
+  }
+
+  // 10. Every workflow is pinnable and bounded. A floating action tag runs
+  //     whatever the tag points at on the day, with this repository's token, and
+  //     a job with no timeout can hold a runner for six hours.
+  const wfDir = join(REPO, '.github', 'workflows');
+  for (const f of (await readdir(wfDir).catch(() => []))) {
+    if (!f.endsWith('.yml') && !f.endsWith('.yaml')) continue;
+    const rel = `.github/workflows/${f}`;
+    const text = await readFile(join(wfDir, f), 'utf8');
+    for (const m of text.matchAll(/uses:\s*([^\s#]+)/g)) {
+      const ref = m[1];
+      if (ref.startsWith('./')) continue;
+      const pinned = /@[0-9a-f]{40}$/.test(ref);
+      if (!pinned) problems.push(`${rel}: ${ref} is not pinned to a commit sha`);
+    }
+    if (!/timeout-minutes:/.test(text)) problems.push(`${rel}: no timeout-minutes on any job`);
+  }
+
+  // 11. The skill description is the routing key a directory and an agent read
+  //     first. It has to name the triggers ("use when...") and the exclusions,
+  //     or the skill fires on the wrong prompt and the description reads as
+  //     marketing rather than an instruction.
+  const skillDir = join(REPO, 'skills', 'design-extractor', 'SKILL.md');
+  const skillText = await readFile(skillDir, 'utf8');
+  const descMatch = skillText.match(/^description:\s*(.+)$/m);
+  if (!descMatch) problems.push('skills/design-extractor/SKILL.md has no single-line description');
+  else {
+    const d = descMatch[1].trim();
+    if (d.length < 80) problems.push(`skill description is ${d.length} characters; it needs to say what it does and when to use it`);
+    if (!/\bUse when\b/i.test(d)) problems.push('skill description has no "Use when" trigger; a model routes on that clause');
+    if (!/\bDo NOT use\b/i.test(d)) problems.push('skill description names no exclusion; it will fire on adjacent prompts');
+  }
+
   if (problems.length === 0) {
-    process.stdout.write(`OK: ${modules.length} modules parse, ${documented.size} documented flags all exist, root is ${rootMd.join(' + ')}, no em dashes\n`);
+    process.stdout.write(`OK: ${modules.length} modules parse, ${documented.size} documented flags all exist, root is ${rootMd.join(' + ')}, no em dashes, repository metadata is consistent\n`);
     return;
   }
   for (const p of problems) process.stdout.write(`error: ${p}\n`);
