@@ -21,9 +21,7 @@ export function resolveAgainst(baseUrl, ref) {
 
 /**
  * Whether `abs` is served from the same origin as the document being rewritten.
- * Same-origin references are left exactly as authored (see the note in
- * `rewriteHtml`); anything else must be repointed into the tree or it hits the
- * network. A missing baseUrl means nothing is known to be same-origin.
+ * A missing baseUrl means nothing is known to be same-origin.
  */
 function sameOrigin(abs, baseUrl) {
   if (!baseUrl) return false;
@@ -34,6 +32,25 @@ function sameOrigin(abs, baseUrl) {
   }
 }
 
+/**
+ * Whether a reference is written as a path relative to the document, which is
+ * the only form that can be left exactly as authored.
+ *
+ * An absolute URL on the same origin - `https://site/img.png` inside
+ * `https://site/` - looks harmless and is not. Replaying the tree from a local
+ * server makes it a request to the real site, so an "offline" copy quietly
+ * loaded 38 of its images from the network, and got none of them when the
+ * network was closed. Only a relative reference resolves against the tree's own
+ * base href, so only a relative reference is left alone.
+ */
+function isRelativeRef(value) {
+  const v = String(value).trim();
+  if (!v) return false;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(v)) return false;   // scheme: http:, data:, blob:
+  if (v.startsWith('//')) return false;               // protocol-relative
+  return true;
+}
+
 function mapSrcset(value, baseUrl, resolver, missed) {
   return value.split(',').map((part) => {
     const trimmed = part.trim();
@@ -42,7 +59,7 @@ function mapSrcset(value, baseUrl, resolver, missed) {
     const urlPart = sp === -1 ? trimmed : trimmed.slice(0, sp);
     const descriptor = sp === -1 ? '' : trimmed.slice(sp);
     const abs = resolveAgainst(baseUrl, urlPart);
-    if (sameOrigin(abs, baseUrl)) return trimmed;
+    if (isRelativeRef(urlPart) && sameOrigin(abs, baseUrl)) return trimmed;
     if (!abs) return trimmed;
     const mapped = resolver ? resolver(abs) : null;
     if (!mapped) { missed.push({ url: abs }); return trimmed; }
@@ -151,15 +168,19 @@ export function rewriteHtml(html, { baseUrl, resolver, collect } = {}) {
     }
     const abs = resolveAgainst(baseUrl, value);
     if (!abs) return whole;
-    // Same-origin references stay byte-identical. A document-relative path loads the
-    // same bytes, but the markup is also a program input: bundle runtimes pair
-    // chunks by comparing the literal attribute against build-time strings.
-    // Turbopack does exactly that - it matches `getAttribute('src')` against its
-    // '/_next/' prefix plus a hardcoded chunk list - so rewriting to a relative path
-    // leaves every chunk unregistered, `hydrateRoot` never fires and the captured
-    // page silently never becomes interactive. Authored paths are also correct
-    // as-is once the tree's host directory is served as the document root.
-    if (sameOrigin(abs, baseUrl)) return whole;
+    // A RELATIVE same-origin reference stays byte-identical. The markup is also a
+    // program input: bundle runtimes pair chunks by comparing the literal
+    // attribute against build-time strings. Turbopack does exactly that - it
+    // matches `getAttribute('src')` against its '/_next/' prefix plus a hardcoded
+    // chunk list - so rewriting to another relative path leaves every chunk
+    // unregistered, `hydrateRoot` never fires and the captured page silently never
+    // becomes interactive. A relative path is also already correct under the
+    // tree's base href.
+    //
+    // An ABSOLUTE same-origin URL is a different thing and is not left alone. It
+    // is a request to the real site, not to the tree: an offline replay of a
+    // captured page loaded 0 of its 38 images and issued 18 live requests.
+    if (isRelativeRef(value) && sameOrigin(abs, baseUrl)) return whole;
     const mapped = resolver ? resolver(abs) : null;
     if (!mapped) { missed.push({ url: abs }); return whole; }
     return `${prefix}${quote}${mapped}${quote}`;
