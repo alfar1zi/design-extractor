@@ -26,7 +26,7 @@ const ROOT_MARKDOWN = ['README.md', 'SECURITY.md'];
 
 // Flags that belong to another tool and are documented as such. Every entry earns
 // its place: npm's own, git's, and the browser install the README quotes.
-const EXTERNAL_FLAGS = new Set(['--with-deps', '--yes', '--no-audit', '--no-fund', '--ignore-scripts', '--dry-run']);
+const EXTERNAL_FLAGS = new Set(['--with-deps', '--yes', '--no-audit', '--no-fund', '--ignore-scripts', '--dry-run', '--skill']);
 
 const CLI_SOURCES = ['scripts/cli.mjs', 'scripts/inspect.mjs', 'scripts/saveweb2zip.mjs'];
 
@@ -263,6 +263,21 @@ async function main() {
       if (!pinned) problems.push(`${rel}: ${ref} is not pinned to a commit sha`);
     }
     if (!/timeout-minutes:/.test(text)) problems.push(`${rel}: no timeout-minutes on any job`);
+  }
+
+  // 11. The skill description is the routing key a directory and an agent read
+  //     first. It has to name the triggers ("use when...") and the exclusions,
+  //     or the skill fires on the wrong prompt and the description reads as
+  //     marketing rather than an instruction.
+  const skillDir = join(REPO, 'skills', 'design-extractor', 'SKILL.md');
+  const skillText = await readFile(skillDir, 'utf8');
+  const descMatch = skillText.match(/^description:\s*(.+)$/m);
+  if (!descMatch) problems.push('skills/design-extractor/SKILL.md has no single-line description');
+  else {
+    const d = descMatch[1].trim();
+    if (d.length < 80) problems.push(`skill description is ${d.length} characters; it needs to say what it does and when to use it`);
+    if (!/\bUse when\b/i.test(d)) problems.push('skill description has no "Use when" trigger; a model routes on that clause');
+    if (!/\bDo NOT use\b/i.test(d)) problems.push('skill description names no exclusion; it will fire on adjacent prompts');
   }
 
   if (problems.length === 0) {

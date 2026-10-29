@@ -57,6 +57,10 @@ files, not a reference.
 npx skills add alfar1zi/design-extractor
 ```
 
+The skill directory is `skills/design-extractor/`. `skills.sh.json` points the
+directory CLI at it, and `npx skills add ... --skill design-extractor` installs
+just this one if the repository ever grows a second skill.
+
 **In Claude Code as a plugin:**
 
 ```bash
