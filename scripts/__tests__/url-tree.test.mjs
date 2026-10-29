@@ -1,11 +1,15 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { resolve, sep } from 'node:path';
+import { resolve, sep, join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { urlToTreePath, extensionFor, assertSafeRel, refInsideHostDir } from '../url-tree.mjs';
 import { relativeFrom } from '../request-intercept.mjs';
 
-// The tree root every relative path must stay inside.
-const ROOT = '/tmp/de-tree';
+// The tree root every relative path must stay inside. Built from the host's own
+// temp directory: a literal '/tmp/de-tree' resolves to 'C:\\tmp\\de-tree' on
+// Windows, so `abs.startsWith(ROOT + sep)` was false for every correct path and
+// five containment tests failed on a runner where nothing was wrong.
+const ROOT = join(tmpdir(), 'de-tree');
 
 function assertInsideRoot(rel) {
   const abs = resolve(ROOT, rel);

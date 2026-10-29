@@ -94,6 +94,8 @@ const SCAN = `
  * @param {{scope?: string[], shotDir?: string, screenshots?: boolean}} [opts]
  * @returns {Promise<{count: number, items: Array<object>, crossOriginSheets: string[]}>}
  */
+import { join, basename } from 'node:path';
+
 export async function findUnreproducible(page, { scope = [], shotDir = null, screenshots = true } = {}) {
   const found = await page.evaluate(`(${SCAN})(${JSON.stringify(scope)})`).catch(() => []);
 
@@ -104,9 +106,12 @@ export async function findUnreproducible(page, { scope = [], shotDir = null, scr
       // Playwright scrolls the element into view before it shoots, so the clip is
       // taken against the element and not against whatever the scan found at
       // those coordinates. The recorded box stays the position at scan time.
-      const abs = `${shotDir}/unreproducible/${item.reason.replace(/[^a-z0-9]+/gi, '-')}-${items.length}.png`;
+      // join and basename, not template interpolation and split('/'): on Windows
+      // the interpolated path mixed a backslash directory with a forward-slash
+      // file name, and split('/') then returned the whole path as the name.
+      const abs = join(shotDir, 'unreproducible', `${item.reason.replace(/[^a-z0-9]+/gi, '-')}-${items.length}.png`);
       const shot = await page.locator(item.selector).first().screenshot({ path: abs }).catch(() => null);
-      screenshot = shot ? abs.split('/').pop() : null;
+      screenshot = shot ? basename(abs) : null;
     }
     items.push({ ...item, screenshot });
   }
