@@ -1,6 +1,6 @@
 {
   "name": "design-extractor",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "description": "Reverse-engineer a website's design system into an offline-reproducible reference for AI agents.",
   "author": {
     "name": "alfar1zi",
