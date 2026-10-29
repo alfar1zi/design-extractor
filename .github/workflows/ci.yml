@@ -59,6 +59,30 @@ jobs:
           } > environment.txt
           node -e "console.log(require('playwright/package.json').version)" > playwright-version.txt || true
 
+      # An artifact needs a token to download and a job log needs admin rights,
+      # so a public red run said only "npm test failed". Annotations are readable
+      # by anyone through the check-runs API and appear on the pull request, so
+      # the failing test names and the environment go there too.
+      - name: annotate the failures
+        if: failure()
+        shell: bash
+        run: |
+          echo "### ${{ matrix.node }} on ${{ matrix.os }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          cat environment.txt >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          if [ -f test-output.tap ]; then
+            grep -E '^not ok' test-output.tap | head -20 > failing.txt || true
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "Failing tests:" >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            cat failing.txt >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+            while IFS= read -r line; do
+              [ -n "$line" ] && echo "::error title=test failure::$line"
+            done < failing.txt
+          fi
+
       - name: upload failure evidence
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
