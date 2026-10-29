@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, stat } from 'node:fs/promises';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -44,7 +44,9 @@ test('inspect runs every pass it is asked for and writes a manifest', async () =
   });
 
   const manifest = JSON.parse(await readFile(join(dir, 'manifest.json'), 'utf8'));
-  const names = manifest.artifacts.map((a) => a.path.split('/').pop());
+  // basename, not split('/'): a Windows manifest path is written with backslashes,
+  // so every entry came back as the whole path and no artifact matched.
+  const names = manifest.artifacts.map((a) => basename(a.path));
 
   for (const expected of ['tokens.json', 'states.json', 'interactions.json', 'hover.json', 'motion.json', 'dom.html']) {
     assert.ok(names.includes(expected), `${expected} is listed in the manifest`);
