@@ -1,6 +1,6 @@
 {
   "name": "design-extractor",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Reverse-engineer a website's design system into an offline-reproducible reference: tokens, motion, states, components.",
   "type": "module",
   "bin": {
