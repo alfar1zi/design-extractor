@@ -1,0 +1,56 @@
+name: release
+
+# A tag is the one moment the repository claims a version. This workflow refuses
+# to publish one whose number disagrees with the manifests, so `v0.3.0` cannot
+# point at a tree that still says 0.2.0, and then writes the release notes from
+# the commits since the previous tag instead of an empty page.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: verify and publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020  # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # The tag, package.json, the plugin manifest, the marketplace entry and
+      # skill.json all name a version. Five places, one release: check them
+      # before anything is published under the tag's name.
+      - name: tag matches every manifest
+        run: node scripts/check-release.mjs "${GITHUB_REF_NAME}"
+
+      - run: npm run lint
+      - run: npm run validate
+      - run: npm audit --omit=dev --audit-level=high
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+
+      # The tarball a user gets, built from the tag rather than from a working
+      # tree, and attached so the release page is downloadable without npm.
+      - name: pack
+        run: |
+          npm pack
+          echo "TARBALL=$(ls design-extractor-*.tgz)" >> "$GITHUB_ENV"
+
+      - name: publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" "$TARBALL" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes \
+            --verify-tag

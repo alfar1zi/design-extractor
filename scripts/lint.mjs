@@ -246,6 +246,23 @@ async function main() {
     }
   }
 
+  // 10. Every workflow is pinnable and bounded. A floating action tag runs
+  //     whatever the tag points at on the day, with this repository's token, and
+  //     a job with no timeout can hold a runner for six hours.
+  const wfDir = join(REPO, '.github', 'workflows');
+  for (const f of (await readdir(wfDir).catch(() => []))) {
+    if (!f.endsWith('.yml') && !f.endsWith('.yaml')) continue;
+    const rel = `.github/workflows/${f}`;
+    const text = await readFile(join(wfDir, f), 'utf8');
+    for (const m of text.matchAll(/uses:\s*([^\s#]+)/g)) {
+      const ref = m[1];
+      if (ref.startsWith('./')) continue;
+      const pinned = /@[0-9a-f]{40}$/.test(ref);
+      if (!pinned) problems.push(`${rel}: ${ref} is not pinned to a commit sha`);
+    }
+    if (!/timeout-minutes:/.test(text)) problems.push(`${rel}: no timeout-minutes on any job`);
+  }
+
   if (problems.length === 0) {
     process.stdout.write(`OK: ${modules.length} modules parse, ${documented.size} documented flags all exist, root is ${rootMd.join(' + ')}, no em dashes, repository metadata is consistent\n`);
     return;

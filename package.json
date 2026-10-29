@@ -16,7 +16,8 @@
     "test": "node scripts/run-tests.mjs",
     "lint": "node scripts/lint.mjs",
     "validate": "node scripts/validate-plugin.mjs",
-    "validate:plugin": "node scripts/validate-plugin.mjs"
+    "validate:plugin": "node scripts/validate-plugin.mjs",
+    "check:release": "node scripts/check-release.mjs"
   },
   "dependencies": {
     "acorn": "^8.18.0",
