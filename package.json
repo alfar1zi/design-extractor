@@ -1,7 +1,7 @@
 {
   "name": "design-extractor",
   "version": "0.2.0",
-  "description": "Skill + CLI for deep, faithful reference capture of any website: download real source, watch it move in a browser, document tokens/components/motion. Stops being a screenshot trap.",
+  "description": "Reverse-engineer a website's design system into an offline-reproducible reference: tokens, motion, states, components.",
   "type": "module",
   "bin": {
     "design-extractor": "./scripts/cli.mjs",
@@ -26,16 +26,21 @@
     "yauzl": "^3.2.0"
   },
   "keywords": [
-    "skill",
-    "agent",
-    "design",
-    "reference",
+    "agent-skills",
     "claude-code",
-    "opencode",
+    "ai-agents",
     "playwright",
-    "scrape",
-    "audit",
-    "motion"
+    "design-system",
+    "design-tokens",
+    "reverse-engineering",
+    "website-clone",
+    "motion",
+    "css",
+    "accessibility",
+    "cli",
+    "scraper",
+    "opencode",
+    "codex"
   ],
   "files": [
     ".claude-plugin",

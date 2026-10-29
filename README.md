@@ -1,211 +1,189 @@
 <p align="center">
-  <img src="assets/logo.png" width="220" alt="design-extractor logo">
+  <img src="assets/logo.png" width="180" alt="design-extractor: a magnifier crossing a page layout">
 </p>
 
 <h1 align="center">design-extractor</h1>
 
 <p align="center">
-  Stop copying pixels. Screenshots miss the motion. Extract the actual source, computed tokens, and runtime behavior.
+  Reverse-engineer any website into a design system an agent can rebuild from:<br>
+  real source, computed tokens, motion, states, components, and a pixel-diff score.
 </p>
 
 <p align="center">
+  <a href="https://www.skills.sh/alfar1zi/design-extractor"><img src="https://skills.sh/b/alfar1zi/design-extractor" alt="skills.sh installs"></a>
   <a href="../../actions/workflows/ci.yml"><img src="../../actions/workflows/ci.yml/badge.svg" alt="ci"></a>
-  <a href="."><img src="https://img.shields.io/badge/node-%E2%89%A520-339933" alt="node >=20"></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="license MIT"></a>
-  <a href="."><img src="https://img.shields.io/badge/slash--command-%2Fdesign--extractor-7170ff" alt="slash command: /design-extractor"></a>
+  <img src="https://img.shields.io/badge/node-%E2%89%A520-339933" alt="node 20 or newer">
+  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license"></a>
 </p>
+
+```bash
+npx skills add alfar1zi/design-extractor     # install as an agent skill
+```
+
+```bash
+npx design-extractor https://linear.app --out ./refs/linear
+```
+
+A screenshot tells you what a page looked like. It does not tell you which token set
+the background, what easing the hero used, what the button does on hover, or which
+parts were canvas and cannot be rebuilt at all. This tool captures the page as
+evidence instead: the real source, the live browser, and the numbers that prove the
+two agree.
 
 ---
 
-## Why
+## Why not just screenshot it
 
-Screenshot tools give you pixels. They miss source architecture, animation timing, runtime DOM, and interaction state. These parts determine how a design works.
+| What you need to rebuild | Screenshot | HTML dump | design-extractor |
+| --- | :---: | :---: | :---: |
+| Palette, type scale, radii, spacing | guess | only declared values | resolved cascade + DTCG tokens |
+| Motion (GSAP, scroll-linked, typing) | invisible | invisible | recorded tracks with replay stops |
+| Hover, focus, checked states | invisible | only the rules | measured duration per state |
+| Which parts are canvas, video, auth-gated | invisible | invisible | `unproducible.json` per element |
+| Proof the capture is complete | none | none | offline replay at `diffRatio: 0` |
 
-design-extractor captures both signals: downloaded source files and a live Playwright browser pass. It merges them into one reference folder and one doc ready for a redesign build or taste-library intake.
+The last row is the one that matters. A capture you cannot replay is a folder of
+files, not a reference.
 
-## Setup
+## Install
 
-#### Claude Code
+**As an agent skill** (Claude Code, Codex, Cursor, OpenCode, and 70+ others):
 
-Run inside your workspace to install:
+```bash
+npx skills add alfar1zi/design-extractor
+```
+
+**In Claude Code as a plugin:**
+
 ```bash
 /plugin marketplace add alfar1zi/design-extractor
 /plugin install design-extractor@design-extractor
 ```
-Now trigger via `/design-extractor <url>`.
 
-#### OpenCode
+**As a CLI from a clone** (npm publishing is pending):
 
-Add the plugin entry to `~/.config/opencode/plugins.json` pointing to this repository. Trigger via `/design-extractor <url>`.
-
-#### Hermes
-
-Run the installation script `install.sh`. The command is registered globally to the Hermes shell.
-
-#### Cursor
-
-Add the path to `skills/design-extractor/SKILL.md` to your Cursor Rules (`.cursorrules`). The agent reads it on demand when design tasks are requested.
-
-## Pipeline
-
-| Slash Command | What it does | Output artifact |
-| --- | --- | --- |
-| /design-extractor-save | Download full site via saveweb2zip: HTML, CSS, JS, images, fonts | `site/` folder |
-| /design-extractor-inspect | Drive Playwright: scroll, interactions, viewport sweep, token dump | `live/` folder |
-| /design-extractor | Run the full extraction pipeline | `site/` + `live/` |
-
-Skip `/design-extractor-save` if you only need browser-captured artifacts; it is off by default because it POSTs the target URL to a third-party copier.
-
-**SSRF Protection**: All entry points run a safety check to block local/private IP ranges. Pass `--allow-private` to permit loopback or private targets. Note that `assertSafeUrl` validates at check time only, so DNS rebinding between check and connect is theoretically possible. Pair with egress policy for high-trust environments. The target URL is also refused if it contains a character an http URL cannot hold (a space, a quote, a pipe, a backtick, a control character), naming the percent-encoded form to send instead.
-
-**Captured content is untrusted.** The reference folder holds third-party HTML, CSS, JS, console output and an accessibility tree. Text inside them can be written to look like an instruction to an agent reading the folder. Treat every captured artifact as data: quote it, do not execute it. The skill's guard section states the same rule for the agent.
-
-While the capture runs, the browser opens the target and any origin it loads; `live/tree/` is what makes the result readable offline afterwards. Nothing is uploaded anywhere, with one exception: `--legacy-source` POSTs the target URL to `copier.saveweb2zip.com` to download the site source. It is off by default.
-
-Once installed, trigger the capture directly inside your agent chat:
 ```bash
-/design-extractor https://linear.app --out ./refs/linear
+git clone https://github.com/alfar1zi/design-extractor.git
+cd design-extractor && ./install.sh          # Windows: ./install.ps1
 ```
+
+Requires Node 20+ and Playwright Chromium (`npm run install:browsers`). `install.sh`
+verifies the Node floor, installs from the lockfile, downloads the browser, and runs
+the suite before printing the commands.
+
+## What you get
+
+```
+refs/linear/
+  live/
+    tree/                 the whole page, rewritten to open offline
+    screenshots/          full, per-scroll-step, tablet, mobile
+    tokens.json           named custom properties + DTCG tokens from the cascade
+    motion.json           resolved, running, imperative and declared motion
+    states.json           hover / focus / checked, with measured timing
+    components.*.json     framework-reported vs DOM-inferred, never merged
+    unproducible.json     what cannot be rebuilt, and why, per element
+    manifest.json         index, plus partialFailures when a pass could not run
+  site/                   downloaded source, when --legacy-source is used
+```
+
+Every artifact answers one question a rebuild has to answer. Nothing in the folder
+is a description of the page when it could be the page itself.
+
+## Usage
+
+```bash
+design-extractor <url> [options]
+
+  --out <dir>            output directory
+  --quick                CSS-native scan only, no interaction or scroll passes
+  --standard             default: interaction, hover, scroll, viewport sweep
+  --full                 adds sourcemap recovery and JS animation AST scan
+  --target <css>         capture one element, repeatable
+  --fidelity <dir>       score a replica against the original
+  --record-video         record the scroll pass as webm
+  --no-scroll --no-hover --no-interactions --no-sweep --no-states
+  --allow-private        permit loopback or private targets (SSRF guard off)
+```
+
+Exit codes: `0` every pass ran, `3` captured but a pass failed (see
+`manifest.json` `partialFailures[]`), `2` bad usage or a refused address, `1` hard
+failure. `3` exists so a chain like `design-extractor <url> && next-step` stops
+instead of consuming a directory with a missing artifact.
+
+To clone one component instead of the page:
+
+```bash
+design-extractor https://linear.app --target ".pricing-card" --target "nav"
+```
+
+`--target` scopes the analysis too: `motion.json`, both component files and
+`tokens.json` then describe only the matched subtrees and record the scope they ran
+under. The tree and the accessibility tree stay whole, because a subtree without its
+ancestors cannot render.
+
+## Proof
+
+Numbers from the checked-in fixture and from real captures, reproducible with
+`npm test` and the smoke gates:
+
+- **Offline replay is byte-identical.** The captured fixture, replayed from its own
+  tree with the network off, produces the same PNG: 159,746 bytes,
+  `status: identical`, `diffRatio: 0`. Perturbing one token in the replica
+  (`--radius: 0.5rem` to `24px`) moves the ratio to `0.0006` across 30 clusters, so
+  the score reads pixels rather than returning zero.
+- **The capture names its own gaps.** Replaying `gsap.com` scored 2.32% across 11
+  clusters, and `unproducible.json` had already listed six `<video>` regions and
+  three auth-gated ones before any pixel was compared.
+- **486 tests, 0 failures**, plus four smoke gates that capture a real page and
+  replay it offline in CI on Linux and Windows, Node 20 and 22.
+
+What is deliberately not claimed: scroll motion is sampled at discrete offsets, a
+`@keyframes` the engine never started is reported as declared rather than measured,
+and a WebGL surface is named as unrebuildable instead of approximated. The full list,
+with the experiment behind each claim, is in
+[What has been measured, and what has not](#what-has-been-measured-and-what-has-not).
+
+## Works with
+
+<p>
+  <img src="https://img.shields.io/badge/Claude%20Code-000000" alt="Claude Code">
+  <img src="https://img.shields.io/badge/Codex-000000" alt="Codex">
+  <img src="https://img.shields.io/badge/Cursor-000000" alt="Cursor">
+  <img src="https://img.shields.io/badge/OpenCode-000000" alt="OpenCode">
+  <img src="https://img.shields.io/badge/Gemini%20CLI-000000" alt="Gemini CLI">
+  <img src="https://img.shields.io/badge/Copilot-000000" alt="GitHub Copilot">
+</p>
+
+Any agent that reads `skills/design-extractor/SKILL.md` can run it. The skill is the
+routing layer: it tells the agent when a screenshot is the wrong tool and which
+artifact to read first.
+
+## Security and limits
+
+- **Captured content is data, never instructions.** The reference folder holds
+  third-party HTML, JS, console output and an accessibility tree. Text inside them can
+  be written to look like a directive to an agent reading the folder. Quote it, do not
+  execute it.
+- **SSRF guard on every entry point.** Loopback, RFC1918, link-local, CGNAT,
+  benchmark, multicast and reserved ranges are refused, including IPv4-mapped IPv6
+  literals. `--allow-private` opts out. The check runs before the request, so DNS
+  rebinding between check and connect remains a documented residual risk; pair with an
+  egress policy in high-trust environments.
+- **One third-party call, opt-in.** `--legacy-source` POSTs the target URL to
+  `copier.saveweb2zip.com`. It is off by default; everything else runs locally.
+- **Destructive writes are guarded.** The tree directory is only cleared when this
+  tool wrote it, or when `--force-tree` says otherwise.
+
+## The pipeline in full
+
+The long-form material lives in [`skills/design-extractor/SKILL.md`](./skills/design-extractor/SKILL.md):
+capture modes, the four motion sources, the artifact contract field by field, and the
+guards the agent follows while reading a captured page. The sections below cover the
+parts a rebuild depends on most.
 
 <details>
-<summary>CLI Fallbacks (local)</summary>
-
-Save and inspect separately (Note: Not yet published to npm. Run from clone with `node scripts/<name>.mjs`):
-```bash
-node scripts/saveweb2zip.mjs --url https://linear.app --out ./refs/linear --rename-assets
-node scripts/inspect.mjs --url https://linear.app --out ./refs/linear/live --viewport 1440x900
-```
-
-Add `--record-video` to `design-extractor-inspect` to capture the scroll pass as `.webm`. Add `--site-dir` to scan JS for animation libs. Add `--sourcemap` to recover original function names from JS source maps. Add `--fidelity <dir>` to score a finished replica directory against the original - see `fidelity.json`. `design-extractor` itself forwards `--target`, `--sourcemap`, `--fidelity` and `--no-*` to the inspect step; flags that only `design-extractor-inspect` accepts are rejected there rather than silently ignored.
-
-**Exit codes** (from `design-extractor` / `scripts/cli.mjs`):
-
-| Code | Meaning | Artifacts |
-| --- | --- | --- |
-| `0` | every pass ran | complete |
-| `3` | captured, but a pass failed - see `manifest.json` `partialFailures[]` | usable, incomplete |
-| `2` | bad usage, or the URL resolves to a private/loopback address | none |
-| `1` | hard failure; the capture did not finish | none |
-
-`3` exists so a caller can tell "this site is fine but the states pass broke" from
-"this run worked", without scraping stdout. The tree on disk is real in both the
-`3` and `0` cases.
-
-To clone one element instead of the whole page, pass `--target` as many times as
-you like. Each match is captured on its own: its markup, its computed styles,
-its hover and focus states with the measured transition, and a screenshot
-cropped to it. A selector that matches nothing is reported in `targets.json`
-rather than throwing, so one stale selector does not lose the rest - but a run in
-which *every* selector misses is almost always a typo, and it fails instead of
-filling the output directory with artifacts scoped to nothing.
-
-`--target` scopes the analysis too, not just the screenshots. `motion.json`,
-`components.authoritative.json`, `components.inferred.json` and `tokens.json` then describe
-only what is inside the matched subtrees, and each of them records the `scope`
-it was captured under. `tokens.json` gains `scopedProperties`: the custom
-properties actually in force on those elements, which is not the same set as
-the ones the site declares in its stylesheets - a component that overrides an
-inherited token only shows up here.
-
-The capture tree, the accessibility tree and the screenshots stay whole. A tree
-filtered to a subtree cannot render, because it loses the ancestor chain that
-positions it.
-
-```bash
-node scripts/inspect.mjs --url https://linear.app --out ./refs/linear/live \
-  --target ".pricing-card" --target "nav[aria-label=primary]"
-```
-
-Drop template marketplaces and aggregators. Pick one URL, then run the capture.
-</details>
-
-## Demo
-
-```bash
-# design-extractor https://tailwindcss.com --out ./refs/tw
-[cli] URL: https://tailwindcss.com
-[cli] OutDir: ./refs/tw
-=== inspect ===
-[inspect] Tokens: 491 custom properties, 719 from the cascade
-[inspect] Capture: 71 files, 10340KB, 0 missing, 0 blocked redirects
-[inspect] Hover pass: 20 hovers (3 errored)
-[inspect] Motion: 5 @keyframes, 1 running, 4 imperative, 1 resolved, truncated
-[inspect] Components: 10 named, 3080 minified, 88 inferred clusters
-[inspect] 2 things on this page cannot be reproduced from the capture
-[inspect] OK: ./refs/tw/live (14 artifacts)
-[cli] data:  a11y-interactive.json  a11y-tree.json  capture.json  components.inferred.json
-         components.authoritative.json  console.json  hover.json  motion.json  network.json  tokens.json
-         unproducible.json
-```
-
-`--fidelity <dir>` scores the capture's own screenshots against a reference
-directory of the same shots and writes `fidelity.json`: a `diffRatio` per
-viewport, the largest box where the two disagree, and the regions that were
-never reproduced. Both sides have to come from one Chromium at one viewport with
-`deviceScaleFactor 1` - Playwright documents that rendering varies by host OS and
-browser build, so a diff taken under different conditions measures the
-environment rather than the rebuild.
-
-```bash
-node scripts/cli.mjs https://example.com/ --out rebuild --fidelity ref/live/screenshots
-```
-
-Without the flag, use the module directly. Every name present on one side only
-is reported rather than skipped, so a rebuild that dropped half its screenshots
-cannot score as a clean run:
-
-```bash
-node -e "import('./scripts/fidelity.mjs').then(async m => {
-  const r = await m.compareDirectories('ref_example/live/screenshots', 'rebuild/screenshots');
-  console.log(r.overall, r.counts, r.worst);
-})"
-```
-
-`compareImages` reports `diffRatio` itself. `looks-same` leaves `differentPixels`
-and `totalPixels` `undefined` on an exact match, which read as a broken capture
-rather than a perfect one.
-
-Measured on real captures (2026-10-01): replaying a captured `example.com` from
-disk with the network closed reproduced the page at **0.0000%** differing pixels
-and 0 clusters. Replaying `gsap.com` the same way came out at **2.32%** across 11
-clusters - and the tool had already named why, listing six `<video>` regions and
-three auth-gated ones in `unreproducible.json` before anyone compared a pixel.
-
-Three real production sites (2026-08-22). The logs for these three runs are not in the repository, so treat the table as a claim about what the tool produced that day rather than as something you can re-read here; `examples/` ships the two runs whose logs were kept, both UTF-8 with LF endings:
-
-| site | source files | live artifacts | total | zip size |
-| --- | ---: | ---: | ---: | ---: |
-| itomdev.com | 11 | 79 | 91 | 1451 KB |
-| linear.app | 112 | 124 | 237 | 5860 KB |
-| stripe.com | 288 | 130 | 419 | 61463 KB |
-
-## Output
-
-After a full run on `https://target.example --out ./refs/target`:
-
-```
-refs/target/
-  site/               downloaded source: HTML, CSS, JS, images, fonts
-  live/
-    tree/             every captured file; cross-origin refs rewritten to tree paths, opens offline
-    screenshots/      full.png, scroll-01..N.png, tablet.png, mobile.png
-    targets/          one cropped screenshot per --target selector
-    a11y-tree.json    full accessibility tree
-    tokens.json       custom properties the site named + DTCG tokens from the whole cascade
-    dom.html          post-hydration DOM
-    network.json      requests, fonts, lazy assets
-    interactions.json click-pass results
-    hover.json        per-element hover state, with the measured transition
-    states.json       every pseudo-state on the page, with its measured timing
-    motion.json       animation tracks, plus what scrolling revealed
-    components.authoritative.json  framework-reported components (React/Vue/Next.js/Svelte); absent when none
-fidelity.json               pixel score against a reference dir; written only with --fidelity
-    components.inferred.json  DOM clusters, kept separate from the above
-    unproducible.json what this page cannot be rebuilt from, and why
-    screenshots/unreproducible/  one cropped shot per unreproducible element
-    animation-libs.json  library fingerprint (if --site-dir passed)
-    manifest.json     artifact index
-```
+<summary><b>Artifact contract: what each file answers</b></summary>
 
 `components.authoritative.json` and `components.inferred.json` are separate on purpose. The
 first is what the framework says; the second is what the DOM shape suggests. A
@@ -308,7 +286,117 @@ a result on either list, not a gap.
 
 The folder is the artifact. Hand it to a redesign build or taste-library intake as-is.
 
-## What has been measured, and what has not
+</details>
+
+<details>
+<summary><b>Measured on real sites</b></summary>
+
+Three real production sites (2026-08-22). The logs for these three runs are not in the repository, so treat the table as a claim about what the tool produced that day rather than as something you can re-read here; `examples/` ships the two runs whose logs were kept, both UTF-8 with LF endings:
+
+| site | source files | live artifacts | total | zip size |
+| --- | ---: | ---: | ---: | ---: |
+| itomdev.com | 11 | 79 | 91 | 1451 KB |
+| linear.app | 112 | 124 | 237 | 5860 KB |
+| stripe.com | 288 | 130 | 419 | 61463 KB |
+
+Measured on real captures (2026-10-01): replaying a captured `example.com` from
+disk with the network closed reproduced the page at **0.0000%** differing pixels
+and 0 clusters. Replaying `gsap.com` the same way came out at **2.32%** across 11
+clusters - and the tool had already named why, listing six `<video>` regions and
+three auth-gated ones in `unproducible.json` before anyone compared a pixel.
+
+`--fidelity <dir>` scores the capture's own screenshots against a reference
+directory of the same shots and writes `fidelity.json`: a `diffRatio` per
+viewport, the largest box where the two disagree, and the regions that were
+never reproduced. Both sides have to come from one Chromium at one viewport with
+`deviceScaleFactor 1` - Playwright documents that rendering varies by host OS and
+browser build, so a diff taken under different conditions measures the
+environment rather than the rebuild.
+
+```bash
+design-extractor https://example.com/ --out rebuild --fidelity ref/live/screenshots
+```
+
+Without the flag, use the module directly. Every name present on one side only
+is reported rather than skipped, so a rebuild that dropped half its screenshots
+cannot score as a clean run:
+
+```bash
+node -e "import('./scripts/fidelity.mjs').then(async m => {
+  const r = await m.compareDirectories('ref_example/live/screenshots', 'rebuild/screenshots');
+  console.log(r.overall, r.counts, r.worst);
+})"
+```
+
+`compareImages` reports `diffRatio` itself. `looks-same` leaves `differentPixels`
+and `totalPixels` `undefined` on an exact match, which read as a broken capture
+rather than a perfect one.
+
+A sample run against a large site:
+
+```bash
+# design-extractor https://tailwindcss.com --out ./refs/tw
+[cli] URL: https://tailwindcss.com
+[cli] OutDir: ./refs/tw
+=== inspect ===
+[inspect] Tokens: 491 custom properties, 719 from the cascade
+[inspect] Capture: 71 files, 10340KB, 0 missing, 0 blocked redirects
+[inspect] Hover pass: 20 hovers (3 errored)
+[inspect] Motion: 5 @keyframes, 1 running, 4 imperative, 1 resolved, truncated
+[inspect] Components: 10 named, 3080 minified, 88 inferred clusters
+[inspect] 2 things on this page cannot be reproduced from the capture
+[inspect] OK: ./refs/tw/live (14 artifacts)
+[cli] data:  a11y-interactive.json  a11y-tree.json  capture.json  components.inferred.json
+         components.authoritative.json  console.json  hover.json  motion.json  network.json  tokens.json
+         unproducible.json
+```
+
+</details>
+
+<details>
+<summary><b>Capture modes and flags</b></summary>
+
+| Mode | Flag | What it does | Typical duration |
+|---|---|---|---|
+| Quick | `--quick` | CSS-native animation extraction only. No interaction, hover, scroll, or sweep passes. | 30s - 2min |
+| Standard | default | Interaction + hover + scroll + viewport sweep, CSS-native animation extraction. | 2-5min |
+| Full | `--full` | Everything in Standard plus sourcemap fetch (same-origin, 5s timeout) and acorn AST scan for GSAP/ScrollTrigger call expressions. | 5-10min+ |
+
+Individual `--no-scroll`, `--no-hover`, `--no-interactions`, `--no-sweep`,
+`--no-states` flags still work as overrides after the preset is applied.
+
+Under `--full`, a cross-origin sourcemap that fails or times out after five seconds
+falls back silently to the `js-inferred` tier, and the scan never blocks the rest of
+the capture.
+
+Motion has four sources because each one misses a class the others catch:
+
+```
+motion.json
+  sources.resolved    [...]  // CDP Animation.getAnimationStyles: what the engine
+                            // resolved, with the CSS rules behind it
+  sources.running     [...]  // document.getAnimations(), frame by frame
+  sources.imperative  [...]  // inline-style churn from GSAP/anime/rAF, which never
+                            // registers a WAAPI animation at all, plus text reveals
+  sources.defined     [...]  // @keyframes rules, including inside @media/@supports
+```
+
+An `imperative` track carries a `motion` field that decides how to rebuild it:
+
+| `motion` | What moved | How to replay it |
+|---|---|---|
+| `style` | inline `transform` / `opacity` | tween the inline style; `stops[].inlineStyle` is the keyframe |
+| `content` | the element's text, one chunk at a time | append characters on a timer; `stops[].text` is what was on screen at that offset |
+| `mixed` | both | drive the style tween and the text append together |
+
+The first stop of a track is its `baseline`, the state before anything moved. A
+`content` track is seeded with the text as it was before the first character
+arrived, normally the empty string.
+
+</details>
+
+<details>
+<summary><b>What has been measured, and what has not</b></summary>
 
 Everything above is a description of the format. This is the part where the tool
 could be wrong about itself, so it is written as numbers and as a list of things
@@ -320,7 +408,7 @@ produces a byte-identical PNG - same 159,746 bytes, `status: identical`. That is
 the number a rebuild should be measured against; anything above zero is the
 rebuild's, not the capture's. The comparison is proven to read pixels rather than
 return zero by default: perturbing a single token in the replica
-(`--radius: 0.5rem` → `24px`) moves the ratio to `0.0006` across 30 clusters.
+(`--radius: 0.5rem` to `24px`) moves the ratio to `0.0006` across 30 clusters.
 Both sides are shot in one browser at one viewport and one device scale factor,
 because rendering varies by browser and headless mode and a cross-browser diff
 measures the browsers.
@@ -369,7 +457,7 @@ than reporting nothing.
 the tool rather than assumed, and it caught a false negative. `tailwindcss.com`
 was first captured as having no dark theme at all - `differs` was empty. That
 was wrong. Probing the same page by hand showed `emulateMedia` reaching it
-perfectly well and `body`'s `color` flipping `rgb(0, 0, 0)` → `rgb(255, 255, 255)`;
+perfectly well and `body`'s `color` flipping `rgb(0, 0, 0)` to `rgb(255, 255, 255)`;
 the site expresses its theme in plain properties, so a tool that only compares
 custom properties sees nothing. Comparing resolved style on a bounded element
 sample found 91 changing elements on the same page. The lesson is the one the
@@ -391,18 +479,35 @@ Not proven, and treated as unknown rather than assumed to work:
 - **Fidelity is one browser, one machine.** A score of 0 here is not a promise
   about Safari or a different display scale.
 
-## Companion skills
+</details>
 
-- **impeccable**: audits a built UI against the reference; catches color drift, spacing violations, missing motion.
-- **design-taste-frontend**: ingests the reference folder and applies tasted style decisions to a new build.
-- **design-workflow**: coordinates the full redesign cycle; uses the reference as the intake for planning.
+<details>
+<summary><b>Using the reference in a rebuild</b></summary>
+
+Read in this order, and stop guessing at each step:
+
+1. `tokens.json` - the palette, type scale, spacing and radii the page actually
+   resolved to, not the ones its stylesheet declared.
+2. `components.inferred.json` - the repeated shapes worth rebuilding first,
+   ranked by how often they occur.
+3. `states.json` and `motion.json` - what changes on hover, focus and scroll, and
+   how long it takes.
+4. `unproducible.json` - what you are not going to be able to match, before you
+   promise a 1:1 result.
+5. `fidelity.json` - after the rebuild, the number that says whether it worked.
+
+Companion skills that consume this output: `impeccable` audits a built UI against
+the reference, `design-taste-frontend` applies taste decisions to a new build, and
+`design-workflow` coordinates the full redesign cycle.
+
+</details>
 
 ## Contributing
 
 ```bash
 npm ci && npm run install:browsers
-npm test        # node --test over scripts/__tests__/*.test.mjs
-npm run lint    # module syntax, documented-flag parity, root-stays-clean
+npm test          # node --test over scripts/__tests__/*.test.mjs
+npm run lint      # module syntax, documented-flag parity, root markdown, em dashes
 npm run validate  # plugin manifests and skill frontmatter
 ```
 
@@ -412,10 +517,12 @@ Conventions the gates enforce, rather than a doc that asks politely:
   next to the commands it describes.
 - **Every flag in the prose is a flag some parser accepts.** `npm run lint` compares
   the two; `--record-video` advertised for a CLI that rejected it is the bug it exists for.
+- **No em dashes.** The lint gate fails on `U+2014` anywhere in the tree, so a
+  typographic habit cannot reach a reader's font.
 - **Keep modules small.** Aim under 400 lines and split by responsibility, the way
   `manifest.mjs`, `sweep-pass.mjs` and `interaction-pass.mjs` were split out of
   `inspect.mjs`. That file is at 408 and is the one to split when next touched.
 - **Tests ship with the fix**, and a browser-dependent suite belongs in the smoke
   gates rather than the unit run.
 
-License: MIT. Maintainer: alfar1zi.
+License: MIT. Maintainer: [alfar1zi](https://github.com/alfar1zi).
