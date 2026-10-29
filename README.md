@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="assets/logo.png" width="180" alt="design-extractor: a magnifier crossing a page layout">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/logo.svg">
+    <img src="assets/logo.svg" width="140" alt="design-extractor: a page being inspected through a magnifier">
+  </picture>
 </p>
 
 <h1 align="center">design-extractor</h1>

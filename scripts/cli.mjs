@@ -7,6 +7,13 @@ import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
 import { normalizeArgv } from './argv.mjs';
+import { readFile } from 'node:fs/promises';
+
+// Read from package.json rather than a constant: a version that appears in two
+// places is a version that disagrees with itself after one release.
+const VERSION = JSON.parse(
+  await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
 
 const DEFAULT_VIEWPORT = '1440x900';
 const DEFAULT_TIMEOUT = 30;
@@ -46,6 +53,7 @@ export function parseArgs(argv) {
       case '--allow-private': out.allowPrivate = true; break;
       case '--force-tree': out.forceTree = true; break;
       case '-h': case '--help': out.help = true; break;
+      case '-V': case '--version': out.version = true; break;
       case '--quick':
         out.scroll = false;
         out.interactions = false;
@@ -78,7 +86,7 @@ export function parseArgs(argv) {
         out.url = a;
     }
   }
-  if (out.help) return out;
+  if (out.help || out.version) return out;
   if (!out.url) throw new Error('url is required (positional)');
   // Syntax + SSRF validation happens in main() via validateUrl/assertSafeUrl
   // so parseArgs stays sync and tests can import validateUrl directly.
@@ -173,7 +181,7 @@ const dim  = (m) => out(wrap('90', m));
 const ok   = (m) => out(wrap('32', m));
 const head = (m) => out(wrap('33', m));
 
-const HELP = `design-extractor -- website clone engine
+const HELP = `design-extractor ${VERSION} -- website clone engine
 
 Usage: design-extractor <url> [options]
 
@@ -200,6 +208,7 @@ Options:
   --skip-inspect        skip browser inspect step
   --allow-private       allow private/loopback URLs (off by default; SSRF guard)
   --force-tree          overwrite live/tree even when this tool did not write it
+  -V, --version         print the version and exit
   -h, --help            show this help
 
 Steps: inspect (browser capture; writes the executable artifacts).
@@ -212,6 +221,7 @@ async function main() {
   try { args = parseArgs(normalizeArgv(process.argv.slice(2))); }
   catch (e) { err(e.message); process.exit(2); }
   if (args.help) { process.stdout.write(HELP); return; }
+  if (args.version) { process.stdout.write(`${VERSION}\n`); return; }
 
   try { await validateUrl(args.url, { allowPrivate: !!args.allowPrivate }); }
   catch (e) { err(e.message); process.exit(2); }

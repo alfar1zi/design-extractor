@@ -4,13 +4,20 @@
 // yauzl is lazily imported inside extractZip so pure-logic tests can import
 // helpers from this file without the dep being installed.
 
-import { mkdir, writeFile, rm, readdir, realpath } from 'node:fs/promises';
+import { mkdir, writeFile, rm, readdir, realpath, readFile } from 'node:fs/promises';
 import { createWriteStream, mkdirSync } from 'node:fs';
 import { spawn } from 'node:child_process';
 import { resolve, join, sep, posix, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
 import { normalizeArgv } from './argv.mjs';
+
+// Read from package.json rather than a constant: a version that appears in two
+// places is a version that disagrees with itself after one release.
+const VERSION = JSON.parse(
+  await readFile(new URL('../package.json', import.meta.url), 'utf8'),
+).version;
+
 
 const API = 'https://copier.saveweb2zip.com';
 const REFERER = 'https://saveweb2zip.com/en';
@@ -49,10 +56,11 @@ export function parseArgs(argv) {
       case '--allow-private': out.allowPrivate = true; break;
       case '--no-fallback': out.allowFallback = false; break;
       case '-h': case '--help': out.help = true; break;
+      case '-V': case '--version': out.version = true; break;
       default: throw new Error(`unknown flag: ${a}`);
     }
   }
-  if (out.help) return out;
+  if (out.help || out.version) return out;
   if (!out.url) throw new Error('--url is required');
   if (!Number.isFinite(out.timeoutSec) || out.timeoutSec <= 0) throw new Error('--timeout must be a positive number');
   return out;
@@ -92,7 +100,7 @@ const info = (m) => out(wrap('36', m));
 const dim  = (m) => out(wrap('90', m));
 const ok   = (m) => out(wrap('32', m));
 
-const HELP = `design-extractor-save -- download a full site via saveweb2zip
+const HELP = `design-extractor-save ${VERSION} -- download a full site via saveweb2zip
 Usage: design-extractor-save --url <URL> [options]
 Options:
   --url <URL>              target site (required)
@@ -105,6 +113,7 @@ Options:
   --json <file>            write manifest JSON to file
   --allow-private          allow private/loopback URLs (off by default; SSRF guard)
   --no-fallback            do not fetch monolith/single-file-cli via npx
+  -V, --version             print the version and exit
   -h, --help               show this help
 `;
 
@@ -301,6 +310,7 @@ function extractZip(zipPath, outDir) {
 async function main() {
   const args = await exit(2, parseArgs, normalizeArgv(process.argv.slice(2)));
   if (args.help) { process.stdout.write(HELP); return; }
+  if (args.version) { process.stdout.write(`${VERSION}\n`); return; }
 
   try { await assertSafeUrl(args.url, { allowPrivate: !!args.allowPrivate }); }
   catch (e) { err(e.message); process.exit(2); }
