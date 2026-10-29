@@ -1,0 +1,63 @@
+name: repository metadata
+
+# The description and topics on the repository page are the first thing a search
+# engine, a directory listing and an agent read. They lived only in the GitHub
+# settings UI, so they drifted from the code: the page still advertised Node 18
+# after engines.node moved to 20. They are versioned in
+# .github/repository-metadata.json and applied from there.
+on:
+  push:
+    branches: [main]
+    paths: ['.github/repository-metadata.json']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  apply:
+    name: sync description and topics
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # A fine-grained token with "Administration: write" is required: the
+      # default GITHUB_TOKEN cannot edit repository settings. Without it the job
+      # skips instead of failing, so a fork does not inherit a red check.
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+      - name: apply
+        env:
+          TOKEN: ${{ secrets.REPOSITORY_METADATA_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::notice::REPOSITORY_METADATA_TOKEN is not set; metadata left unchanged"
+            exit 0
+          fi
+          node -e '
+            const fs = require("node:fs");
+            const meta = JSON.parse(fs.readFileSync(".github/repository-metadata.json", "utf8"));
+            fs.writeFileSync("/tmp/patch.json", JSON.stringify({
+              description: meta.description,
+              homepage: meta.homepage || "",
+            }));
+            fs.writeFileSync("/tmp/topics.json", JSON.stringify({ names: meta.topics }));
+          '
+          curl -sS -X PATCH \
+            -H "authorization: Bearer $TOKEN" \
+            -H "accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPO" \
+            -d @/tmp/patch.json > /tmp/repo.json
+          curl -sS -X PUT \
+            -H "authorization: Bearer $TOKEN" \
+            -H "accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$REPO/topics" \
+            -d @/tmp/topics.json > /tmp/topics.out
+          node -e '
+            const r = require("/tmp/repo.json");
+            const t = require("/tmp/topics.out");
+            console.log("description:", r.description);
+            console.log("topics:", (t.names || []).join(", "));
+            if (!r.description) { console.error("description was not applied"); process.exit(1); }
+          '

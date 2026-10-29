@@ -1,10 +1,13 @@
 name: ci
 
+# Pull requests are checked against every branch they target: a change proposed
+# for develop was previously unverified until it reached main, which is the one
+# branch where a red run blocks a release instead of a review.
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
-    branches: [main]
+    branches: [main, develop]
 
 # The default token is broader than this workflow needs, and a workflow file is
 # the one place a compromised dependency can act with it.
