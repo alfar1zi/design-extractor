@@ -57,7 +57,11 @@ export function parseArgs(argv) {
       case '--no-fallback': out.allowFallback = false; break;
       case '-h': case '--help': out.help = true; break;
       case '-V': case '--version': out.version = true; break;
-      default: throw new Error(`unknown flag: ${a}`);
+      default:
+        if (a.startsWith('-')) throw new Error(`unknown flag: ${a}`);
+        if (out.url) throw new Error(`unexpected argument: ${a} (the url is already "${out.url}")`);
+        out.url = a;
+        break;
     }
   }
   if (out.help || out.version) return out;
@@ -101,9 +105,9 @@ const dim  = (m) => out(wrap('90', m));
 const ok   = (m) => out(wrap('32', m));
 
 const HELP = `design-extractor-save ${VERSION} -- download a full site via saveweb2zip
-Usage: design-extractor-save --url <URL> [options]
+Usage: design-extractor-save <URL> [options]
 Options:
-  --url <URL>              target site (required)
+  <URL>                   target site (required; --url is also accepted)
   --out <DIR>              output directory (default: ./ref_YYYYMMDD_HHmmss)
   --rename-assets          rename hashed assets
   --save-structure         preserve site URL structure
