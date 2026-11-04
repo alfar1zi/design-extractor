@@ -15,6 +15,10 @@ test('parseArgs requires --url', () => {
   assert.throws(() => parseArgs([]), /--url is required/);
 });
 
+test('parseArgs accepts a positional URL', () => {
+  assert.equal(parseArgs(['https://x.test']).url, 'https://x.test');
+});
+
 test('parseArgs reads all flags and booleans', () => {
   const a = parseArgs(['--url', 'https://x.test', '--out', '/tmp/o', '--rename-assets', '--mobile-version', '--timeout', '60', '--json', '/tmp/m.json']);
   assert.equal(a.url, 'https://x.test');

@@ -119,7 +119,7 @@ Individual `--no-scroll`, `--no-hover`, `--no-interactions`, `--no-sweep` flags 
 **Caveat on `--full`**: Sourcemap fetch may take significant time on sites with many JS bundles. Cross-origin sourcemaps that fail or timeout after 5 seconds fall back silently to the `js-inferred` tier. The scan does not block the rest of the capture.
 
 ```bash
-npx design-extractor-inspect https://target.example --out ./refs/target/live --viewport 1440x900
+npx design-extractor-inspect --url https://target.example --out ./refs/target/live --viewport 1440x900
 # mode presets:
 npx design-extractor-inspect ... --quick          # CSS-native only, fastest
 npx design-extractor-inspect ... --standard       # default, backward-compatible
