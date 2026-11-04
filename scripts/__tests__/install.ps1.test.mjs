@@ -24,10 +24,11 @@ test('install.ps1 references npm test', () => {
   assert.match(installPs1, /npm\s+test/);
 });
 
-test('install.ps1 prints the four bin command names', () => {
-  assert.match(installPs1, /design-extractor-save/);
-  assert.match(installPs1, /design-extractor-inspect/);
-  assert.match(installPs1, /design-extractor <url>/);
+test('install.ps1 prints runnable repo-root commands', () => {
+  assert.match(installPs1, /node scripts\/cli\.mjs <url>/);
+  assert.match(installPs1, /node scripts\/inspect\.mjs --url https:\/\/\.\.\. --out \.\/refs\/foo\/live --viewport 1440x900/);
+  assert.match(installPs1, /node scripts\/saveweb2zip\.mjs https:\/\/\.\.\. --out \.\/refs\/foo/);
+  assert.match(installPs1, /npm link.*optional/);
 });
 
 test('install.ps1 has pwsh shebang', () => {

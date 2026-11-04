@@ -24,10 +24,11 @@ test('install.sh references npm test or npm run test', () => {
   assert.ok(/npm\s+test|npm\s+run\s+test/.test(installSh), 'no npm test reference');
 });
 
-test('install.sh prints the four bin command names', () => {
-  assert.match(installSh, /design-extractor-save/);
-  assert.match(installSh, /design-extractor-inspect/);
-  assert.match(installSh, /design-extractor <url>/);
+test('install.sh prints runnable repo-root commands', () => {
+  assert.match(installSh, /node scripts\/cli\.mjs <url>/);
+  assert.match(installSh, /node scripts\/inspect\.mjs --url https:\/\/\.\.\. --out \.\/refs\/foo\/live --viewport 1440x900/);
+  assert.match(installSh, /node scripts\/saveweb2zip\.mjs https:\/\/\.\.\. --out \.\/refs\/foo/);
+  assert.match(installSh, /npm link.*optional/);
 });
 
 test('install.sh has bash shebang', () => {
