@@ -20,8 +20,8 @@ The live and replay viewports have 0 changed pixels (`0.0000%`, same MD5).
 
 | Step | Command | Result |
 | --- | --- | --- |
-| Capture | `design-extractor <url> --out ./refs/name` | Browser capture and offline tree |
-| Inspect | `design-extractor-inspect --url <url> --out ./refs/name/live` | Runtime evidence and design tokens |
+| Capture | `node scripts/cli.mjs <url> --out ./refs/name` | Browser capture and offline tree |
+| Inspect | `node scripts/inspect.mjs --url <url> --out ./refs/name/live` | Runtime evidence and design tokens |
 | Read | Give `./refs/name` to your agent | Source, screenshots, and JSON artifacts |
 
 <p align="center">
@@ -76,13 +76,15 @@ npm run install:browsers
 node scripts/cli.mjs https://example.com --out ./refs/example
 ```
 
+The CLI is available from a clone today. `npx design-extractor` will work after the package is published with `npm publish`.
+
 ## Usage
 
 ```bash
-npx design-extractor https://example.com --out ./refs/example --quick
-npx design-extractor https://example.com --out ./refs/example --full
-npx design-extractor https://example.com --target ".hero" --out ./refs/example
-npx design-extractor https://example.com --out ./refs/rebuild --fidelity ./refs/example/live/screenshots
+node scripts/cli.mjs https://example.com --out ./refs/example --quick
+node scripts/cli.mjs https://example.com --out ./refs/example --full
+node scripts/cli.mjs https://example.com --target ".hero" --out ./refs/example
+node scripts/cli.mjs https://example.com --out ./refs/rebuild --fidelity ./refs/example/live/screenshots
 ```
 
 Useful flags include `--viewport 1440x900`, `--timeout 30`, `--no-scroll`,

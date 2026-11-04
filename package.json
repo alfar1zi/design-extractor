@@ -50,7 +50,6 @@
     "!scripts/__tests__",
     "skills",
     "assets",
-    "examples",
     "install.sh",
     "install.ps1",
     "skill.json",
