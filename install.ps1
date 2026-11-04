@@ -64,10 +64,11 @@ if ($LASTEXITCODE -ne 0) { Fail "Tests failed. Open the output above, fix the fa
 Ok ""
 Ok "=========================================="
 Ok "design-extractor installed."
-Ok "Try these commands:"
-Ok "  npx design-extractor-save https://... --out ./refs/foo"
-Ok "  npx design-extractor-inspect --url https://... --out ./refs/foo/live --viewport 1440x900"
-Ok "  npx design-extractor <url>"
+Ok "Try these commands from the repo root:"
+Ok "  node scripts/cli.mjs <url>"
+Ok "  node scripts/inspect.mjs --url https://... --out ./refs/foo/live --viewport 1440x900"
+Ok "  node scripts/saveweb2zip.mjs https://... --out ./refs/foo"
+Ok "  npm link  # optional, for global design-extractor commands"
 Ok "=========================================="
 
 # Step 6: point agent at the skill file. The skill lives in the plugin layout,

@@ -55,10 +55,11 @@ npm test
 ok ""
 ok "=========================================="
 ok "design-extractor installed."
-ok "Try these commands:"
-ok "  npx design-extractor-save https://... --out ./refs/foo"
-ok "  npx design-extractor-inspect --url https://... --out ./refs/foo/live --viewport 1440x900"
-ok "  npx design-extractor <url>"
+ok "Try these commands from the repo root:"
+ok "  node scripts/cli.mjs <url>"
+ok "  node scripts/inspect.mjs --url https://... --out ./refs/foo/live --viewport 1440x900"
+ok "  node scripts/saveweb2zip.mjs https://... --out ./refs/foo"
+ok "  npm link  # optional, for global design-extractor commands"
 ok "=========================================="
 
 # Step 6: point agent at the skill file. The skill lives in the plugin layout,

@@ -58,7 +58,7 @@ Never auto-commit to the first result. After the user picks a URL, proceed to St
 Primary path - saveweb2zip (server-side copy, full assets, zipped):
 
 ```bash
-npx design-extractor-save https://target.example --out ./refs/target --rename-assets
+node scripts/saveweb2zip.mjs https://target.example --out ./refs/target --rename-assets
 ```
 
 Common flags (mirror the source site's options):
@@ -119,15 +119,15 @@ Individual `--no-scroll`, `--no-hover`, `--no-interactions`, `--no-sweep` flags 
 **Caveat on `--full`**: Sourcemap fetch may take significant time on sites with many JS bundles. Cross-origin sourcemaps that fail or timeout after 5 seconds fall back silently to the `js-inferred` tier. The scan does not block the rest of the capture.
 
 ```bash
-npx design-extractor-inspect --url https://target.example --out ./refs/target/live --viewport 1440x900
+node scripts/inspect.mjs --url https://target.example --out ./refs/target/live --viewport 1440x900
 # mode presets:
-npx design-extractor-inspect ... --quick          # CSS-native only, fastest
-npx design-extractor-inspect ... --standard       # default, backward-compatible
-npx design-extractor-inspect ... --full           # all tiers including sourcemap + AST scan
+node scripts/inspect.mjs ... --quick          # CSS-native only, fastest
+node scripts/inspect.mjs ... --standard       # default, backward-compatible
+node scripts/inspect.mjs ... --full           # all tiers including sourcemap + AST scan
 # other flags:
-npx design-extractor-inspect ... --record-video        # record scroll pass as .webm (slow)
-npx design-extractor-inspect ... --site-dir ./refs/target/site  # scan downloaded JS for animation libs
-npx design-extractor-inspect ... --target ".pricing-card" --target "nav"  # one element, not the page
+node scripts/inspect.mjs ... --record-video        # record scroll pass as .webm (slow)
+node scripts/inspect.mjs ... --site-dir ./refs/target/site  # scan downloaded JS for animation libs
+node scripts/inspect.mjs ... --target ".pricing-card" --target "nav"  # one element, not the page
 ```
 
 **Choosing what to clone.** The user decides, and the flag is the whole decision.
@@ -429,8 +429,9 @@ Then use the commands from Steps 1, 3, and 0 above.
 
 Requires Node 20+, Playwright Chromium.
 
-The three `npx design-extractor*` forms in Steps 1 and 3 also work once the package
-is published. Until then, run them from the clone as `node scripts/<name>.mjs`.
+The `node scripts/<name>.mjs` forms in Steps 1 and 3 work from a clone right now.
+`npx design-extractor*` works only after `npm publish`; the package is not on the
+registry yet. Run `npm link` once if you want the global command names.
 
 ---
 
