@@ -2,7 +2,7 @@
   "name": "design-extractor",
   "displayName": "Design Extractor",
   "version": "0.5.3",
-  "description": "Reverse-engineer a website's design system into an offline-reproducible reference: design tokens, motion, interaction states and framework components, captured from the live page and the real source.",
+  "description": "Clone any website into an offline reference agents can rebuild.",
   "license": "MIT",
   "repository": "https://github.com/alfar1zi/design-extractor",
   "keywords": [

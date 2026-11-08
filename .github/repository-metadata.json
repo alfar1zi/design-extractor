@@ -1,6 +1,6 @@
 {
   "$comment": "Mirrors the GitHub repository description, homepage and topics. Applied by .github/workflows/repository-metadata.yml; checked by scripts/lint.mjs so the live page cannot drift from this file.",
-  "description": "Reverse-engineer any website's design system into an offline-reproducible reference: tokens, motion, states, components. Agent skill + CLI.",
+  "description": "Clone any website into an offline reference agents can rebuild.",
   "homepage": "",
   "topics": [
     "agent-skills",

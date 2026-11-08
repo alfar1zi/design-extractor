@@ -11,7 +11,7 @@
         "name": "alfar1zi"
       },
       "category": "development",
-      "description": "Reverse-engineer a website's design system into an offline-reproducible reference: tokens, motion, states, components, plus a pixel-diff score.",
+      "description": "Clone any website into an offline reference agents can rebuild.",
       "keywords": [
         "agent-skills",
         "design-system",

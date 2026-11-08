@@ -1,7 +1,7 @@
 {
   "name": "design-extractor",
   "version": "0.5.3",
-  "description": "Reverse-engineer a website's design system into an offline-reproducible reference for AI agents.",
+  "description": "Clone any website into an offline reference agents can rebuild.",
   "author": {
     "name": "alfar1zi",
     "url": "https://github.com/alfar1zi"

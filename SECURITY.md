@@ -5,7 +5,7 @@
 Report privately through GitHub's [security advisory form](https://github.com/alfar1zi/design-extractor/security/advisories/new).
 Please do not open a public issue for a vulnerability.
 
-Include the version (`npx design-extractor --version`), the command you ran, and the
+Include the version (`node scripts/cli.mjs --version`), the command you ran, and the
 smallest input that reproduces it. A proof of concept against a site you control is
 ideal; a URL you do not control is not needed.
 

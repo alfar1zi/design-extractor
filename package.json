@@ -1,7 +1,7 @@
 {
   "name": "design-extractor",
   "version": "0.5.3",
-  "description": "Reverse-engineer a website's design system into an offline-reproducible reference: tokens, motion, states, components.",
+  "description": "Clone any website into an offline reference agents can rebuild.",
   "type": "module",
   "bin": {
     "design-extractor": "./scripts/cli.mjs",

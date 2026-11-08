@@ -16,13 +16,31 @@ The proof capture is `teenage.engineering` at `1440x900`: 86 files / 4.0 MB,
 4/12 images, 1 external request blocked (`cdn.fonts.net`), and 0 local misses.
 The live and replay viewports have 0 changed pixels (`0.0000%`, same MD5).
 
+### Gallery: Awwwards Nominees
+
+Replay fidelity tested across real-world modern web nominees with full off-origin network blocking:
+
+| Nominee | DOM Elements | Images (Replay/Live) | Blocked Off-Origin | Local Misses | Viewport Diff | Offline Replay |
+| --- | --- | --- | --- | --- | --- | --- |
+| [grail-app.com](https://grail-app.com/) | 615 | 28 / 28 | 4 | 0 | 0.35% | [Video](assets/gallery/grail-app.mp4) |
+| [emotion.studio](https://emotion.studio/) | 400 | 18 / 18 | 0 | 0 | 0.00% | [Video](assets/gallery/emotion-studio.mp4) |
+
+<p align="center"><img src="assets/gallery/grail-app.png" width="848" alt="Grail app live versus offline replay comparison"></p>
+<p align="center"><img src="assets/gallery/emotion-studio.png" width="848" alt="Emotion Studio live versus offline replay comparison"></p>
+
 ## Workflow
 
-| Step | Command | Result |
-| --- | --- | --- |
-| Capture | `node scripts/cli.mjs <url> --out ./refs/name` | Browser capture and offline tree |
-| Inspect | `node scripts/inspect.mjs --url <url> --out ./refs/name/live` | Runtime evidence and design tokens |
-| Read | Give `./refs/name` to your agent | Source, screenshots, and JSON artifacts |
+```bash
+node scripts/cli.mjs https://teenage.engineering
+```
+
+One command. No flags. The capture lands in `./refs/teenage.engineering` and the
+last line of output is the absolute path - hand that path to your agent and it
+reads the screenshots, the tokens and the offline tree.
+
+A second capture of the same site never overwrites the first: it writes
+`teenage.engineering-2` (then `-3`, and so on). `--force` replaces a folder
+instead, when that is what you meant.
 
 <p align="center">
   <picture>
@@ -73,23 +91,27 @@ git clone https://github.com/alfar1zi/design-extractor.git
 cd design-extractor
 npm install
 npm run install:browsers
-node scripts/cli.mjs https://example.com --out ./refs/example
+node scripts/cli.mjs https://example.com
 ```
 
 The CLI is available from a clone today. `npx design-extractor` will work after the package is published with `npm publish`.
 
 ## Usage
 
+The URL is the whole command. Flags exist for the cases that need them and are
+never required:
+
 ```bash
-node scripts/cli.mjs https://example.com --out ./refs/example --quick
-node scripts/cli.mjs https://example.com --out ./refs/example --full
-node scripts/cli.mjs https://example.com --target ".hero" --out ./refs/example
-node scripts/cli.mjs https://example.com --out ./refs/rebuild --fidelity ./refs/example/live/screenshots
+node scripts/cli.mjs https://example.com --target ".hero" --out ./refs/hero
 ```
 
-Useful flags include `--viewport 1440x900`, `--timeout 30`, `--no-scroll`,
-`--no-interactions`, `--no-sweep`, `--no-states`, `--sourcemap`, `--allow-private`,
-and repeatable `--target <css>`.
+`--target <css>` (repeatable) adds `targets.json` (per-element capture) and
+scopes tokens, components and motion analysis to the matched selectors; the
+tree, screenshots and accessibility tree stay whole-page. `--out <dir>` writes
+somewhere other than `./refs/<host>`. `--viewport 1440x900`, `--timeout 30`, `--quick`, `--full`,
+`--sourcemap`, `--no-scroll`, `--no-interactions`, `--no-sweep`, `--no-states`
+and `--allow-private` are there when the default run is not what you want; run
+`--help` for the list.
 
 ## Limits
 
