@@ -74,24 +74,13 @@ function injectBase(html) {
   if (/<html[^>]*>/i.test(html)) return html.replace(/<html[^>]*>/i, (m) => `${m}<head>${base}</head>`);
   return base + html;
 }
-const URL_ATTR = '(?:src|href|data)';
-const SRCSET_ATTR = '(?:srcset|poster)';
+// One URL attribute inside a tag whose text was already extracted. `srcset` must
+// come before `src` so the alternation cannot stop at the shorter name.
+const ATTR_RE = /\b(srcset|poster|src|href|data)\s*=\s*(["'])([^"']*)\2/gi;
+const SRCSET_ONLY_RE = /^(?:srcset|poster)$/i;
 const TAG = '(?:script|link|img|source|video|audio|embed|track|iframe|object|input|use|image)';
-
-// Anything that is not a `>` outside a quoted run. `[^>]*` looks equivalent and is
-// not: an attribute value may legally contain `>`, so `data-x="a>b"` ended the tag
-// early and every attribute after it stopped being rewritten. The quoted branches
-// are what let the scan cross that `>`.
-const TAG_BODY = '(?:"[^"]*"|\'[^\']*\'|[^>])*?';
-
-// Group 1 is everything up to and including `name=`, group 2 names the attribute,
-// group 3 is the quote and group 4 the raw value. Both attribute alternatives must
-// consume their own `=`, so the separator lives inside the group.
-const ATTR_RE = new RegExp(
-  `(<${TAG}\\b${TAG_BODY}\\b(${URL_ATTR}|${SRCSET_ATTR})\\s*=\\s*)(["'])([^"']*)\\3`,
-  'gi',
-);
-const SRCSET_ONLY_RE = new RegExp(`^${SRCSET_ATTR}$`, 'i');
+// The open tags whose URL attributes get rewritten.
+const TAG_OPEN_RE = new RegExp(`<${TAG}\\b`, 'gi');
 
 /** Index of the `>` that closes the open tag starting at `from`, or -1 if none does. */
 function openTagEnd(text, from) {
@@ -108,7 +97,8 @@ function openTagEnd(text, from) {
   return -1;
 }
 
-const BLOCK_OPEN_RE = /<(script|style)\b/gi;
+const BLOCK_OPEN_RE = /<!--|<(script|style)\b/gi;
+const COMMENT_CLOSE_RE = /--!?>/g;
 
 /**
  * Replace each rewritable script/style *body* with a token the attribute pass
@@ -128,6 +118,17 @@ function parkBodies(html, { baseUrl, resolver, missed }) {
   BLOCK_OPEN_RE.lastIndex = 0;
   let open;
   while ((open = BLOCK_OPEN_RE.exec(html)) !== null) {
+    if (open[0] === '<!--') {
+      // A `<script ...>` inside a comment is not markup, but this scan saw it as
+      // one and paired it with a distant `</script>`, swallowing the rest of the
+      // document into a parked body where no attribute is ever rewritten
+      // (measured on a Webflow page: 50 imgs / 85 URLs dropped this way). Skip
+      // to the comment's real end, which is `-->` or the `--!>` form.
+      COMMENT_CLOSE_RE.lastIndex = open.index + 4;
+      const close = COMMENT_CLOSE_RE.exec(html);
+      BLOCK_OPEN_RE.lastIndex = close ? close.index + close[0].length : html.length;
+      continue;
+    }
     const start = open.index;
     const tag = open[1].toLowerCase();
     const end = openTagEnd(html, start);
@@ -158,33 +159,57 @@ function parkBodies(html, { baseUrl, resolver, missed }) {
   return { parked: out, bodies };
 }
 
+/**
+ * Rewrite every URL attribute of every rewritable open tag. This walks tags one
+ * open-tag at a time instead of matching one attribute per regex match: a single
+ * match consumes up to the attribute's value, so with `g`-flag scanning the next
+ * match cannot start before that value and a second URL attribute on the same tag
+ * (`src` then `srcset`, or several `src` on one source tag) was never reached -
+ * a Webflow page kept 11 absolute `srcset=` URLs this way. `openTagEnd` is
+ * quote-aware, so an attribute value containing `>` still bounds the tag exactly.
+ */
+function rewriteTagAttrs(html, { baseUrl, resolver, missed }) {
+  let out = '';
+  let cursor = 0;
+  TAG_OPEN_RE.lastIndex = 0;
+  let open;
+  while ((open = TAG_OPEN_RE.exec(html)) !== null) {
+    const end = openTagEnd(html, open.index);
+    if (end === -1) break;
+    const tag = html.slice(open.index, end + 1).replace(ATTR_RE, (whole, attrName, quote, value) => {
+      if (SRCSET_ONLY_RE.test(attrName)) {
+        return `${attrName}=${quote}${mapSrcset(value, baseUrl, resolver, missed)}${quote}`;
+      }
+      const abs = resolveAgainst(baseUrl, value);
+      if (!abs) return whole;
+      // A RELATIVE same-origin reference stays byte-identical. The markup is also a
+      // program input: bundle runtimes pair chunks by comparing the literal
+      // attribute against build-time strings. Turbopack does exactly that - it
+      // matches `getAttribute('src')` against its '/_next/' prefix plus a hardcoded
+      // chunk list - so rewriting to another relative path leaves every chunk
+      // unregistered, `hydrateRoot` never fires and the captured page silently never
+      // becomes interactive. A relative path is also already correct under the
+      // tree's base href.
+      //
+      // An ABSOLUTE same-origin URL is a different thing and is not left alone. It
+      // is a request to the real site, not to the tree: an offline replay of a
+      // captured page loaded 0 of its 38 images and issued 18 live requests.
+      if (isRelativeRef(value) && sameOrigin(abs, baseUrl)) return whole;
+      const mapped = resolver ? resolver(abs) : null;
+      if (!mapped) { missed.push({ url: abs }); return whole; }
+      return `${attrName}=${quote}${mapped}${quote}`;
+    });
+    out += html.slice(cursor, open.index) + tag;
+    cursor = end + 1;
+  }
+  return out + html.slice(cursor);
+}
+
 export function rewriteHtml(html, { baseUrl, resolver, collect } = {}) {
   const missed = [];
   const { parked, bodies } = parkBodies(String(html), { baseUrl, resolver, missed });
 
-  const rewritten = parked.replace(ATTR_RE, (whole, prefix, attrName, quote, value) => {
-    if (SRCSET_ONLY_RE.test(attrName)) {
-      return `${prefix}${quote}${mapSrcset(value, baseUrl, resolver, missed)}${quote}`;
-    }
-    const abs = resolveAgainst(baseUrl, value);
-    if (!abs) return whole;
-    // A RELATIVE same-origin reference stays byte-identical. The markup is also a
-    // program input: bundle runtimes pair chunks by comparing the literal
-    // attribute against build-time strings. Turbopack does exactly that - it
-    // matches `getAttribute('src')` against its '/_next/' prefix plus a hardcoded
-    // chunk list - so rewriting to another relative path leaves every chunk
-    // unregistered, `hydrateRoot` never fires and the captured page silently never
-    // becomes interactive. A relative path is also already correct under the
-    // tree's base href.
-    //
-    // An ABSOLUTE same-origin URL is a different thing and is not left alone. It
-    // is a request to the real site, not to the tree: an offline replay of a
-    // captured page loaded 0 of its 38 images and issued 18 live requests.
-    if (isRelativeRef(value) && sameOrigin(abs, baseUrl)) return whole;
-    const mapped = resolver ? resolver(abs) : null;
-    if (!mapped) { missed.push({ url: abs }); return whole; }
-    return `${prefix}${quote}${mapped}${quote}`;
-  });
+  const rewritten = rewriteTagAttrs(parked, { baseUrl, resolver, missed });
 
   if (typeof collect === 'function') collect(missed);
   return injectBase(rewritten).replace(/\u0000(\d+)\u0000/g, (_, i) => bodies[Number(i)]);

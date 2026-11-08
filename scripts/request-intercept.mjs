@@ -104,7 +104,7 @@ export async function installInterceptor(context, store, opts = {}) {
 
   await context.route('**/*', async (route, request) => {
     const url = request.url();
-    if (SKIP_SCHEME.test(url)) return route.continue();
+    if (SKIP_SCHEME.test(url)) return route.continue().catch(() => {});
     // Recorded before the fetch: a request that never answers is the one case
     // the store cannot discover on its own, and `missing` cannot hold it either
     // because no response was ever seen to fail.
@@ -118,7 +118,7 @@ export async function installInterceptor(context, store, opts = {}) {
       const at = e.blockedUrl || url;
       blocked.push({ url: at, from: url, hops: e.hops || [], reason: e.message });
       if (onFetchError) onFetchError(e);
-      return route.fulfill(refusal(at, e.message));
+      return route.fulfill(refusal(at, e.message)).catch(() => {});
     }
 
     for (const hop of hops) store.noteRedirect(hop.from, hop.to, hop.status);
@@ -131,7 +131,7 @@ export async function installInterceptor(context, store, opts = {}) {
       // The bytes are gone (evicted, or a body the browser never materialised).
       // Record the loss and let the page carry on with the live response.
       store.putFailed(request, response, e);
-      return route.fulfill({ response });
+      return route.fulfill({ response }).catch(() => {});
     }
 
     if (!hops.length && finalUrl && finalUrl !== url) store.noteRedirect(url, finalUrl, response.status());
@@ -140,7 +140,7 @@ export async function installInterceptor(context, store, opts = {}) {
     // The first main-frame document is the tree's entry point; a later pass opens
     // its own page and must not steal it.
     if (!entryUrl && request.isNavigationRequest()) entryUrl = finalUrl || url;
-    return route.fulfill({ response });
+    return route.fulfill({ response }).catch(() => {});
   });
 
   return {

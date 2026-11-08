@@ -193,3 +193,23 @@ test('a document navigation is a document even when the path looks like a file',
   const { isIndex } = urlToTreePath('https://x.test/feed.json', { contentType: 'application/json', isDocument: true });
   assert.equal(isIndex, true);
 });
+
+test('a reference relativeFrom emits never needs a .. that refInsideHostDir rejects', () => {
+  // The pair is the single mapping every rewrite goes through. A doc at the host
+  // root reaches a namespaced external with zero `..` (both live under the host
+  // dir), and a nested doc needs exactly the ups its depth allows. A `..` that
+  // climbs past the host dir stays rejected: the tree is served per host, so such
+  // a reference would 404 even though the file exists somewhere under the root.
+  const doc = 'x.test/index.html';
+  const ext = 'x.test/__external__/cdn.test/i.png';
+  const ref = relativeFrom(doc, ext);
+  assert.equal(ref, '__external__/cdn.test/i.png');
+  assert.equal(refInsideHostDir(doc, ref), true);
+
+  const nested = 'x.test/work/case/index.html';
+  const deep = relativeFrom(nested, ext);
+  assert.equal(deep, '../../__external__/cdn.test/i.png');
+  assert.equal(refInsideHostDir(nested, deep), true);
+
+  assert.equal(refInsideHostDir('x.test/index.html', '../__external__/cdn.test/i.png'), false);
+});

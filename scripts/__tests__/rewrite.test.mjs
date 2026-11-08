@@ -266,3 +266,62 @@ test('a cross-origin reference resolves to a file inside the written tree', asyn
   assert.ok(target.startsWith(resolve(outDir) + sep), `${target} is outside the tree`);
   assert.equal(await readFile(target, 'utf8'), 'body{}');
 });
+test('a script tag inside an HTML comment does not swallow the document that follows it', () => {
+  // A Webflow page carried `<!-- <script src=...> --!>` and the close-tag scan
+  // paired that open with a distant `</script>`, parking 63KB of real markup
+  // (50 imgs, 85 URLs) into a body where nothing is ever rewritten.
+  const json = '<script type="application/ld+json">{"@type":"WebSite","url":"https://page.test/"}</script>';
+  const imgs = Array.from({ length: 20 }, (_, i) => `<img src="https://cdn.test/p/${i}.jpg">`).join('');
+  const html = `<!doctype html><head>${json}<!-- <script src="https://unpkg.test/x.js"> --!></head><body>${imgs}</body>`;
+  const captured = Object.fromEntries([...html.matchAll(/https:\/\/cdn\.test\/[^"']+/g)].map((u) => [u[0], `__external__/cdn.test/${u[0].slice(8)}`]));
+  const missed = [];
+  const out = rewriteHtml(html, { baseUrl: 'https://page.test/', resolver: map(captured), collect: (m) => missed.push(...m) });
+  // JSON-LD stays verbatim, including its URL values.
+  assert.match(out, /<script type="application\/ld\+json">\{"@type":"WebSite","url":"https:\/\/page\.test\/"\}<\/script>/);
+  // Every captured image after the comment is rewritten; nothing is swallowed.
+  assert.equal((out.match(/src="__external__\/cdn\.test\//g) || []).length, 20, out.slice(0, 400));
+  assert.equal((out.match(/src="https:\/\/cdn\.test\//g) || []).length, 0);
+  // The unpkg script lives inside a comment, its bytes were never captured, so
+  // it is the only reported miss - the swallowed images must not appear here.
+  assert.deepEqual(missed.map((m) => m.url), ['https://unpkg.test/x.js']);
+});
+
+test('every URL attribute on one tag is rewritten, not only the first', () => {
+  const html = '<img src="https://cdn.test/a.jpg" sizes="100vw" srcset="https://cdn.test/a.jpg 1x, https://cdn.test/a-2x.jpg 2x">';
+  const out = rewriteHtml(html, {
+    baseUrl: 'https://page.test/',
+    resolver: map({
+      'https://cdn.test/a.jpg': '__external__/cdn.test/a.jpg',
+      'https://cdn.test/a-2x.jpg': '__external__/cdn.test/a-2x.jpg',
+    }),
+  });
+  assert.equal((out.match(/__external__\/cdn\.test\/a(-2x)?\.jpg/g) || []).length, 3);
+  assert.equal(out.includes('https://cdn.test'), false);
+});
+
+test('an anchor href is not a URL attribute the rewriter touches', () => {
+  // Proven against the committed implementation (`git show HEAD:scripts/rewrite.mjs`): ATTR_RE only
+  // ran inside tags whose name is in TAG, and `a`, `form`, `area` were never in
+  // it, so an absolute same-origin anchor was left verbatim then and must stay
+  // verbatim now. Adding `a` would rewrite navigation the capture never stored
+  // (every anchor of a single-page capture resolves to a 404), so parity is
+  // "leave alone", not "rewrite".
+  const html = '<a href="https://page.test/about">about</a><form action="https://page.test/s"><area href="https://page.test/a"></form>';
+  const missed = [];
+  const out = rewriteHtml(html, { baseUrl: 'https://page.test/', resolver: map({}), collect: (m) => missed.push(...m) });
+  assert.equal(out.includes('href="https://page.test/about"'), true);
+  assert.equal(out.includes('action="https://page.test/s"'), true);
+  assert.equal(out.includes('href="https://page.test/a"'), true);
+  assert.deepEqual(missed, []);
+});
+
+test('only references the capture never stored are reported as unrewritten', () => {
+  const html = '<img src="https://cdn.test/have.jpg"><img src="https://cdn.test/missing.jpg"><source srcset="https://cdn.test/also-missing.jpg 1x">';
+  const missed = [];
+  rewriteHtml(html, {
+    baseUrl: 'https://page.test/',
+    resolver: map({ 'https://cdn.test/have.jpg': '__external__/cdn.test/have.jpg' }),
+    collect: (m) => missed.push(...m),
+  });
+  assert.deepEqual(missed.map((m) => m.url), ['https://cdn.test/missing.jpg', 'https://cdn.test/also-missing.jpg']);
+});
