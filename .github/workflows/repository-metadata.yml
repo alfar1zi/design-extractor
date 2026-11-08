@@ -29,6 +29,7 @@ jobs:
           TOKEN: ${{ secrets.REPOSITORY_METADATA_TOKEN }}
           REPO: ${{ github.repository }}
         run: |
+          set -euo pipefail
           if [ -z "$TOKEN" ]; then
             echo "::notice::REPOSITORY_METADATA_TOKEN is not set; metadata left unchanged"
             exit 0
@@ -42,21 +43,36 @@ jobs:
             }));
             fs.writeFileSync("/tmp/topics.json", JSON.stringify({ names: meta.topics }));
           '
-          curl -sS -X PATCH \
-            -H "authorization: Bearer $TOKEN" \
-            -H "accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/$REPO" \
-            -d @/tmp/patch.json > /tmp/repo.json
-          curl -sS -X PUT \
-            -H "authorization: Bearer $TOKEN" \
-            -H "accept: application/vnd.github+json" \
-            -H "X-GitHub-Api-Version: 2022-11-28" \
-            "https://api.github.com/repos/$REPO/topics" \
-            -d @/tmp/topics.json > /tmp/topics.out
+          # --fail-with-body keeps the API error inside the output file so the
+          # annotation below can quote GitHub's own message instead of a generic
+          # "curl: (22)". -w captures the status; a non-2xx must be reported
+          # here, never handed to the JSON parser as if it were a success body.
+          # curl's own stderr is captured too: a transport failure has status
+          # 000 and no body, and that detail must reach the annotation.
+          call() {
+            local name="$1" method="$2" url="$3" body="$4" out="$5" status err
+            status=$(curl --silent --show-error --fail-with-body -X "$method" \
+              -H "authorization: Bearer $TOKEN" \
+              -H "accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "$url" -d "@$body" -o "$out" -w '%{http_code}' 2>"/tmp/$name.curl-err") || true
+            err=$(cat "/tmp/$name.curl-err")
+            case "$status" in
+              2??) return 0 ;;
+              401|403)
+                echo "::error title=$name rejected::HTTP $status from $method $url. REPOSITORY_METADATA_TOKEN is invalid or under-scoped: rotate it and use a fine-grained token with Administration: write on this repository. Response: $(cat "$out")"
+                exit 1 ;;
+              *)
+                echo "::error title=$name failed::HTTP ${status:-000} from $method $url. $err Response: $(cat "$out" 2>/dev/null)"
+                exit 1 ;;
+            esac
+          }
+          call "description" PATCH "https://api.github.com/repos/$REPO" /tmp/patch.json /tmp/repo.json
+          call "topics" PUT "https://api.github.com/repos/$REPO/topics" /tmp/topics.json /tmp/topics.out
           node -e '
-            const r = require("/tmp/repo.json");
-            const t = require("/tmp/topics.out");
+            const fs = require("node:fs");
+            const r = JSON.parse(fs.readFileSync("/tmp/repo.json", "utf8"));
+            const t = JSON.parse(fs.readFileSync("/tmp/topics.out", "utf8"));
             console.log("description:", r.description);
             console.log("topics:", (t.names || []).join(", "));
             if (!r.description) { console.error("description was not applied"); process.exit(1); }
