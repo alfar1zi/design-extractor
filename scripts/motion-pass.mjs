@@ -20,12 +20,14 @@ import { openCdp, animatedStylesFor } from './cdp.mjs';
 /**
  * @param {import('playwright').Page} page
  * @param {string} outDir
- * @param {{maxTracks?: number, scroll?: Array<object>, scrollSampled?: boolean}} [opts]
- *   `scope` holds the --target selectors; `scroll` is the track already sampled
- *   before the page was scrolled for screenshots; `scrollSampled` records
- *   whether that track was taken at all.
+ * @param {{maxTracks?: number, scroll?: Array<object>, scrollSampled?: boolean, scope?: string[]}} [opts]
+ *   `scope` holds the --target selectors the sampling was filtered by (the
+ *   imperative sampler and the scroll walk already filter on them); recording it
+ *   in the artifact is what lets a consumer tell a scoped run from a whole-page
+ *   one. `scroll` is the track already sampled before the page was scrolled for
+ *   screenshots; `scrollSampled` records whether that track was taken at all.
  */
-export async function motionPass(page, outDir, { maxTracks = 400, scroll = [], scrollSampled = true, writeMotion = true } = {}) {
+export async function motionPass(page, outDir, { maxTracks = 400, scroll = [], scrollSampled = true, scope = [], writeMotion = true } = {}) {
   // Attach first: `Animation.animationStarted` only reports what happens after
   // `Animation.enable`, so a page that already settled reports nothing here.
   // That gap is exactly why `running` and `defined` are sampled as well.
@@ -55,6 +57,11 @@ export async function motionPass(page, outDir, { maxTracks = 400, scroll = [], s
   const movers = new Set(scroll.flatMap((stop) => stop.entries.map((e) => e.selector)));
   const data = {
     generatedAt: new Date().toISOString(),
+    // Same convention as tokens.json and components.*.json: null when the run
+    // was whole-page, the --target selectors when it was not. The imperative
+    // and scroll tracks above were already sampled under this scope; resolved,
+    // running and defined stay page-wide, which the SKILL states.
+    scope: scope.length ? scope : null,
     sources: {
       resolved: { count: resolved.length, fidelity: 'authoritative', error: resolvedError },
       running: { count: css.running.length, fidelity: 'authoritative' },

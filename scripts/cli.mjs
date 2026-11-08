@@ -2,7 +2,7 @@
 // cli.mjs - top-level orchestrator: runs inspect (browser capture) -> optional legacy source download.
 
 import { spawn } from 'node:child_process';
-import { mkdir, readdir, realpath } from 'node:fs/promises';
+import { mkdir, readdir, realpath, rm } from 'node:fs/promises';
 import { resolve, join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { assertSafeUrl } from './url-safety.mjs';
@@ -21,7 +21,7 @@ const DEFAULT_TIMEOUT = 30;
 // ---- pure helpers (exported for tests) ----
 
 export function parseArgs(argv) {
-  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, hover: true, sweep: true, states: true, recordVideo: false, recordHoverVideo: false, skipSave: false, skipInspect: false, legacySource: false, allowPrivate: false, forceTree: false, help: false, sourcemap: false, targets: [] };
+  const out = { url: null, outDir: null, viewport: DEFAULT_VIEWPORT, timeout: DEFAULT_TIMEOUT, scroll: true, interactions: true, hover: true, sweep: true, states: true, recordVideo: false, recordHoverVideo: false, skipSave: false, skipInspect: false, legacySource: false, allowPrivate: false, forceTree: false, force: false, help: false, sourcemap: false, targets: [] };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     const next = () => argv[++i];
@@ -52,6 +52,7 @@ export function parseArgs(argv) {
       case '--legacy-source': out.legacySource = true; break;
       case '--allow-private': out.allowPrivate = true; break;
       case '--force-tree': out.forceTree = true; break;
+      case '--force': out.force = true; break;
       case '-h': case '--help': out.help = true; break;
       case '-V': case '--version': out.version = true; break;
       case '--quick':
@@ -135,11 +136,42 @@ export function buildChildArgs(opts) {
 }
 
 
-function defaultOutDir(url, now = new Date()) {
-  let host = 'site';
-  try { host = new URL(url).host.replace(/[^a-z0-9.-]/gi, '_') || 'site'; } catch { /* keep site */ }
-  const p = (n) => String(n).padStart(2, '0');
-  return resolve(process.cwd(), `ref_${host}_${now.getFullYear()}${p(now.getMonth() + 1)}${p(now.getDate())}_${p(now.getHours())}${p(now.getMinutes())}${p(now.getSeconds())}`);
+// Default target: ./refs/<host>, not ./ref_<host>_<timestamp>. A stable name is
+// what makes "capture this url" a single step: the agent gets one predictable
+// path to read back, and the same site lands in the same place next time.
+export function defaultOutDir(url) {
+  let slug = 'site';
+  try {
+    const u = new URL(url);
+    // `www.` is noise in a folder name; the rest is sanitized for filesystems
+    // that reject anything outside [a-z0-9.-] (a punycode host is already safe).
+    const host = (u.hostname || '').toLowerCase().replace(/^www\./, '').replace(/[^a-z0-9.-]/g, '_');
+    slug = host || 'site';
+    // `hostname` drops the port, so two local captures would share one folder.
+    if (u.port) slug += `-${u.port}`;
+  } catch { /* keep site */ }
+  return resolve(process.cwd(), 'refs', slug);
+}
+
+// Never write into a directory this run did not just create. Merging a second
+// capture into the first overwrites screenshots and JSON with no way to tell the
+// two runs apart, so a numeric suffix keeps both. --force is the one explicit
+// way to replace the target; an empty leftover directory is reused as-is.
+export async function resolveOutDir(base, opts = {}) {
+  if (opts.force) {
+    await rm(base, { recursive: true, force: true });
+    return base;
+  }
+  for (let n = 0; n < 1000; n++) {
+    const candidate = n === 0 ? base : `${base}-${n + 1}`;
+    try {
+      if ((await readdir(candidate)).length === 0) return candidate;
+    } catch (e) {
+      if (e.code === 'ENOENT') return candidate;
+      throw e;
+    }
+  }
+  throw new Error(`cannot find a free output directory next to ${base} (1000 suffixes tried)`);
 }
 
 function scriptPath(name) {
@@ -183,11 +215,14 @@ const head = (m) => out(wrap('33', m));
 
 const HELP = `design-extractor ${VERSION} -- website clone engine
 
-Usage: design-extractor <url> [options]
+Usage: design-extractor <url>
+
+Just the URL. It captures the page into ./refs/<host> and prints the path.
 
 Options:
   <url>                 target site URL (positional, required)
-  --out <DIR>           output directory (default: ./ref_<host>_<YYYYMMDD_HHmmss>)
+  --out <DIR>           write somewhere else (default: ./refs/<host>)
+  --force               replace the target directory instead of adding -2, -3
   --viewport WxH        viewport for inspect (default: 1440x900)
   --timeout <sec>       page goto timeout for inspect (default: 30)
   --quick               preset: disable all passes (scroll, interactions, sweep); sourcemap off
@@ -226,10 +261,16 @@ async function main() {
   try { await validateUrl(args.url, { allowPrivate: !!args.allowPrivate }); }
   catch (e) { err(e.message); process.exit(2); }
 
-  const outDir = args.outDir ? resolve(args.outDir) : defaultOutDir(args.url);
+  const base = args.outDir ? resolve(args.outDir) : defaultOutDir(args.url);
+  let outDir;
+  try { outDir = await resolveOutDir(base, { force: !!args.force }); }
+  catch (e) { err(e.message); process.exit(1); }
   await mkdir(outDir, { recursive: true });
   info(`URL: ${args.url}`);
   dim(`OutDir: ${outDir}`);
+  // Named, not silently suffixed: a second run on the same site must not look
+  // like the first one's output, and --force is the way to say "replace it".
+  if (outDir !== base) dim(`(${base} already has a capture; wrote a new one instead. Pass --force to replace it.)`);
 
   let partial = false;
   for (const [name, cargs] of buildChildArgs({ out: outDir, ...args })) {
@@ -257,6 +298,10 @@ async function main() {
   const names = await readdir(liveDir).catch(() => []);
   const data = names.filter((f) => f.endsWith('.json') && f !== 'manifest.json').sort();
   if (data.length) dim(`  data:      ${data.join('  ')}`);
+  // Last line is the bare absolute path: an agent reads the folder, not the log,
+  // and a trailing path is what a caller can slice off stdout without parsing.
+  dim('  start with live/manifest.json and live/tokens.json');
+  process.stdout.write(`${outDir}\n`);
   if (partial) process.exit(3);
 }
 

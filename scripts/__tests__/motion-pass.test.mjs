@@ -167,6 +167,30 @@ test('a run that scrolled and found nothing still claims it looked', () => {
   assert.doesNotMatch(looked, /not sampled/, 'sampling happened and came back empty; that is a result');
 });
 
+test('motion.json records the --target scope the capture ran under', async () => {
+  // The sampler and the scroll walk filter on `scope` at capture time, so the
+  // artifact should say exactly what the run was scoped by. Nothing in
+  // motionPass guesses it; the same selectors inspect passes into both paths
+  // are recorded here.
+  const browser = await chromium.launch();
+  const dir = await mkdtemp(join(tmpdir(), 'motion-scope-'));
+  try {
+    const page = await load(browser, FIXTURE);
+    await page.waitForTimeout(300);
+    const data = await motionPass(page, dir, { scope: ['#imp'], writeMotion: true });
+    assert.deepEqual(data.scope, ['#imp'], 'the scope the sampler filtered by is what motion.json records');
+    const written = JSON.parse(await readFile(join(dir, 'motion.json'), 'utf8'));
+    assert.deepEqual(written.scope, ['#imp']);
+    // A whole-page run records null, the same shape tokens.json and components.*
+    // use when no --target was passed.
+    const whole = await motionPass(page, dir, { writeMotion: false });
+    assert.equal(whole.scope, null);
+  } finally {
+    await browser.close();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
 test('the artifact records whether the scroll track was taken at all', async () => {
   const browser = await chromium.launch();
   const page = await browser.newPage();

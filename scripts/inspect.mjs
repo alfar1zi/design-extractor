@@ -110,11 +110,16 @@ export function parseArgs(argv) {
         out.targets.push(val);
         break;
       }
-      default: throw new Error(`unknown flag: ${a}`);
+      default:
+        // Positional URL, so `inspect.mjs <url>` needs no flag either. A token
+        // starting with `-` is still an unknown flag and still named as one.
+        if (a.startsWith('-')) throw new Error(`unknown flag: ${a}`);
+        if (out.url) throw new Error(`unexpected argument: ${a} (the url is already "${out.url}")`);
+        out.url = a;
     }
   }
   if (out.help || out.version) return out;
-  if (!out.url) throw new Error('--url is required');
+  if (!out.url) throw new Error('--url is required (or pass the url positionally)');
   try { new URL(out.url); } catch { throw new Error('--url must be a valid URL'); }
   if (!Number.isFinite(out.timeout) || out.timeout <= 0) throw new Error('--timeout must be a positive number');
   if (out.viewport.width <= 0 || out.viewport.height <= 0) throw new Error('--viewport dimensions must be positive');

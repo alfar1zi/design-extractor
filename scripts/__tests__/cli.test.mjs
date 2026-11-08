@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { join } from 'node:path';
 import { createServer } from 'node:http';
 import { execFile } from 'node:child_process';
-import { mkdtemp, rm, readdir } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { parseArgs, validateUrl, buildChildArgs } from '../cli.mjs';
+import { parseArgs, validateUrl, buildChildArgs, defaultOutDir, resolveOutDir } from '../cli.mjs';
 
 const exec = promisify(execFile);
 const CLI = fileURLToPath(new URL('../cli.mjs', import.meta.url));
@@ -191,4 +191,59 @@ test('--full turns hover back on after --quick turned it off', () => {
   assert.equal(a.hover, true);
   assert.equal(a.scroll, true);
   assert.equal(a.sourcemap, true);
+});
+
+test('defaultOutDir derives ./refs/<host> from the url alone', () => {
+  assert.equal(defaultOutDir('https://teenage.engineering/'), join(process.cwd(), 'refs', 'teenage.engineering'));
+  // `www.` is dropped: the reference folder is named for the site, not the host alias.
+  assert.equal(defaultOutDir('https://www.example.com/a/b'), join(process.cwd(), 'refs', 'example.com'));
+  // A port is part of the identity: two local sites on different ports are two captures.
+  assert.equal(defaultOutDir('http://127.0.0.1:8080/'), join(process.cwd(), 'refs', '127.0.0.1-8080'));
+  // Junk host falls back to a usable name instead of throwing.
+  assert.equal(defaultOutDir('not a url'), join(process.cwd(), 'refs', 'site'));
+});
+
+test('resolveOutDir never reuses a non-empty directory', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'de-out-'));
+  const target = join(base, 'refs');
+  try {
+    // A fresh path is taken as-is.
+    assert.equal(await resolveOutDir(target), target);
+    await mkdir(target, { recursive: true });
+    // An empty directory is still free.
+    assert.equal(await resolveOutDir(target), target);
+    await writeFile(join(target, 'keep.txt'), 'first capture');
+    // A used one is suffixed, and the first capture is untouched.
+    assert.equal(await resolveOutDir(target), `${target}-2`);
+    await mkdir(`${target}-2`);
+    await writeFile(join(`${target}-2`, 'keep.txt'), 'second capture');
+    assert.equal(await resolveOutDir(target), `${target}-3`);
+    assert.equal(await readFile(join(target, 'keep.txt'), 'utf8'), 'first capture');
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test('resolveOutDir replaces the target only with --force', async () => {
+  const base = await mkdtemp(join(tmpdir(), 'de-out-'));
+  const target = join(base, 'refs');
+  try {
+    await mkdir(target, { recursive: true });
+    await writeFile(join(target, 'stale.txt'), 'old');
+    const forced = await resolveOutDir(target, { force: true });
+    assert.equal(forced, target);
+    await mkdir(target, { recursive: true });
+    assert.deepEqual(await readdir(target), [], '--force clears the directory before the capture starts');
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
+
+test('an explicit --out wins over the derived default', () => {
+  const a = parseArgs(['https://www.example.com', '--out', './refs/mine']);
+  const base = a.outDir ? join(process.cwd(), a.outDir) : defaultOutDir(a.url);
+  assert.equal(base, join(process.cwd(), 'refs/mine'));
+  // --force is opt-in and off unless asked for.
+  assert.equal(a.force, false);
+  assert.equal(parseArgs(['https://x.test', '--force']).force, true);
 });
