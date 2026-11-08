@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo.svg" width="128" alt="design-extractor logo">
+  <img src="assets/logo.png" width="112" alt="design-extractor logo">
 </p>
 
 <div align="center">
