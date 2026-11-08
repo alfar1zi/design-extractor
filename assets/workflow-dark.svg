@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 848 200" width="848" height="200" role="img" aria-labelledby="wf-title wf-desc" font-family="ui-sans-serif, system-ui, -apple-system, &quot;Segoe UI&quot;, sans-serif">
+  <title id="wf-title">Capture workflow</title>
+  <desc id="wf-desc">A URL is captured with Playwright and Chromium, the capture writes tree, screenshots, tokens, motion, interactions, DOM and accessibility artifacts under live/, that tree replays from disk with the network blocked, and an optional fidelity pass scores it.</desc>
+  <defs>
+    <marker id="wf-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L8 4 L0 8 Z" fill="#30363d"/>
+    </marker>
+  </defs>
+  <g stroke="#30363d" stroke-width="1.5" fill="#161b22">
+    <rect x="8" y="80" width="110" height="44" rx="6"/>
+    <rect x="158" y="60" width="150" height="84" rx="6"/>
+    <rect x="348" y="60" width="180" height="84" rx="6"/>
+    <rect x="568" y="60" width="140" height="84" rx="6"/>
+    <rect x="748" y="80" width="92" height="44" rx="6"/>
+  </g>
+  <g fill="none" stroke="#30363d" stroke-width="1.5" marker-end="url(#wf-arrow)">
+    <path d="M118 102 H152"/>
+    <path d="M308 102 H342"/>
+    <path d="M528 102 H562"/>
+    <path d="M708 102 H742"/>
+  </g>
+  <g fill="#e6edf3" font-size="14" text-anchor="middle">
+    <text x="63" y="107">URL</text>
+    <text x="233" y="88">capture</text>
+    <text x="233" y="107" font-size="12">Playwright,</text>
+    <text x="233" y="124" font-size="12">Chromium</text>
+    <text x="438" y="88">artifacts</text>
+    <text x="438" y="107" font-size="12">live/</text>
+    <text x="438" y="124" font-size="12">JSON, tree, shots</text>
+    <text x="638" y="88">replay</text>
+    <text x="638" y="107" font-size="12">from disk,</text>
+    <text x="638" y="124" font-size="12">network blocked</text>
+    <text x="794" y="107">fidelity</text>
+  </g>
+  <g fill="#58a6ff" font-size="12" text-anchor="middle">
+    <text x="438" y="158">tree/ screenshots/ tokens.json motion.json</text>
+    <text x="438" y="174">interactions.json dom.html</text>
+    <text x="438" y="190">a11y-tree.json unproducible.json</text>
+  </g>
+</svg>

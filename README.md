@@ -20,6 +20,18 @@
 
 ---
 
+## Workflow
+
+One command captures the page, writes the artifacts under `live/`, and the tree inside it replays from disk with the network blocked.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/workflow-dark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="assets/workflow.svg">
+    <img src="assets/workflow.svg" width="848" alt="Workflow: URL, capture with Chromium, artifacts under live/, offline replay with the network blocked, fidelity score">
+  </picture>
+</p>
+
 ## Origin and Local
 
 The pair below is one capture of `https://grail-app.com/` at `1440x900`: left is the live site, right is the same folder opened from disk with the network blocked. Elements, images, and blocked requests are counts from the capture; viewport diff is a pixel comparison run in the same browser, viewport, and device scale factor, so a nonzero number is real layout drift rather than a rendering difference.
