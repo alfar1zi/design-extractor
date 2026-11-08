@@ -9,50 +9,27 @@
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
 </p>
 
-<p align="center"><img src="assets/proof-offline-replay.png" width="848" alt="Live and offline replay screenshots with capture and replay metrics"></p>
+<p align="center"><img src="assets/proof-offline-replay.png" width="848" alt="Live and offline replay of teenage.engineering at 1440x900"></p>
 
-The proof capture is `teenage.engineering` at `1440x900`: 86 files / 4.0 MB,
-0 missing, 0 blocked. Live: 1285 elements and 5/13 images. Replay: 733 elements,
-4/12 images, 1 external request blocked (`cdn.fonts.net`), and 0 local misses.
-The live and replay viewports have 0 changed pixels (`0.0000%`, same MD5).
+`teenage.engineering` at `1440x900`: 86 files / 4.0 MB, 0 missing, 1 off-origin request blocked. Live 1285 elements, 5/13 images; replay 733 elements, 4/12 images, 0.0000% viewport diff.
 
-### Gallery: Awwwards Nominees
+## Gallery
 
-Replay fidelity tested across real-world modern web nominees with full off-origin network blocking:
+| Site | Elements | Images | Blocked | Misses | Viewport diff |
+| --- | --- | --- | --- | --- | --- |
+| [grail-app.com](https://grail-app.com/) | 615 | 28/28 | 4 | 0 | 0.35% |
+| [emotion.studio](https://emotion.studio/) | 400 | 18/18 | 0 | 0 | 0.00% |
 
-| Nominee | DOM Elements | Images (Replay/Live) | Blocked Off-Origin | Local Misses | Viewport Diff | Offline Replay |
-| --- | --- | --- | --- | --- | --- | --- |
-| [grail-app.com](https://grail-app.com/) | 615 | 28 / 28 | 4 | 0 | 0.35% | [Video](assets/gallery/grail-app.mp4) |
-| [emotion.studio](https://emotion.studio/) | 400 | 18 / 18 | 0 | 0 | 0.00% | [Video](assets/gallery/emotion-studio.mp4) |
+<p align="center"><img src="assets/gallery/grail-app.png" width="848" alt="grail-app.com: live capture above offline replay"></p>
+<p align="center"><img src="assets/gallery/emotion-studio.png" width="848" alt="emotion.studio: live capture above offline replay"></p>
 
-<p align="center"><img src="assets/gallery/grail-app.png" width="848" alt="Grail app live versus offline replay comparison"></p>
-<p align="center"><img src="assets/gallery/emotion-studio.png" width="848" alt="Emotion Studio live versus offline replay comparison"></p>
-
-## Workflow
+## Quick start
 
 ```bash
 node scripts/cli.mjs https://teenage.engineering
 ```
-
-One command. No flags. The capture lands in `./refs/teenage.engineering` and the
-last line of output is the absolute path - hand that path to your agent and it
-reads the screenshots, the tokens and the offline tree.
-
-A second capture of the same site never overwrites the first: it writes
-`teenage.engineering-2` (then `-3`, and so on). `--force` replaces a folder
-instead, when that is what you meant.
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/pipeline-dark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="assets/pipeline.svg">
-    <img src="assets/pipeline.svg" width="848" alt="Pipeline from URL to reference folder and fidelity score">
-  </picture>
-</p>
-
-The default pipeline runs the local browser capture. `--legacy-source` is opt-in and
-POSTs the URL to the third-party `copier.saveweb2zip.com`. MCP is not shipped:
-long browser captures and folder artifacts do not fit a useful stateless contract.
+Output lands in `./refs/teenage.engineering`; the last line is the absolute path. A repeat capture writes `teenage.engineering-2` and so on; `--force` replaces the folder instead.
+<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/pipeline-dark.svg"><img src="assets/pipeline.svg" width="848" alt="Pipeline from URL to reference folder and fidelity score"></picture></p>
 
 ## Output
 
@@ -70,22 +47,16 @@ long browser captures and folder artifacts do not fit a useful stateless contrac
 | `live/unproducible.json` | Canvas, video, missing asset, and other limits |
 
 ## Install
-
 **Agent skill**
-
 ```bash
 npx skills add alfar1zi/design-extractor
 ```
-
 **Claude Code plugin**
-
 ```text
 /plugin marketplace add alfar1zi/design-extractor
 /plugin install design-extractor@design-extractor
 ```
-
 **CLI from a clone**
-
 ```bash
 git clone https://github.com/alfar1zi/design-extractor.git
 cd design-extractor
@@ -93,25 +64,14 @@ npm install
 npm run install:browsers
 node scripts/cli.mjs https://example.com
 ```
-
-The CLI is available from a clone today. `npx design-extractor` will work after the package is published with `npm publish`.
-
 ## Usage
 
-The URL is the whole command. Flags exist for the cases that need them and are
-never required:
+The URL is the whole command. Flags cover the cases that need them:
 
 ```bash
 node scripts/cli.mjs https://example.com --target ".hero" --out ./refs/hero
 ```
-
-`--target <css>` (repeatable) adds `targets.json` (per-element capture) and
-scopes tokens, components and motion analysis to the matched selectors; the
-tree, screenshots and accessibility tree stay whole-page. `--out <dir>` writes
-somewhere other than `./refs/<host>`. `--viewport 1440x900`, `--timeout 30`, `--quick`, `--full`,
-`--sourcemap`, `--no-scroll`, `--no-interactions`, `--no-sweep`, `--no-states`
-and `--allow-private` are there when the default run is not what you want; run
-`--help` for the list.
+`--target <css>` (repeatable) writes `targets.json` and scopes tokens, components and motion to the matched selectors, while the tree, screenshots and accessibility tree stay whole-page. `--out <dir>`, `--viewport 1440x900`, `--timeout 30`, `--quick`, `--full`, `--sourcemap`, `--no-scroll`, `--no-interactions`, `--no-sweep`, `--no-states`, `--legacy-source` and `--allow-private` are available; run `--help` for the list.
 
 ## Limits
 
@@ -132,5 +92,4 @@ and `--allow-private` are there when the default run is not what you want; run
 | Security policy | [`SECURITY.md`](SECURITY.md) |
 | License | [`LICENSE`](LICENSE) |
 
-Contributor convention: run `node --test` or `npm test`, `npm run lint`, and
-`npm run validate` before submitting. Use ESM, and add no dependency without a reason.
+Contributor convention: run `node --test` or `npm test`, `npm run lint`, and `npm run validate` before submitting. ESM only; add no dependency without a reason.
