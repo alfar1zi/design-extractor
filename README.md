@@ -17,8 +17,8 @@
 
 | Site | Elements | Images | Blocked | Misses | Viewport diff |
 | --- | --- | --- | --- | --- | --- |
-| [grail-app.com](https://grail-app.com/) | 615 | 28/28 | 4 | 0 | 0.35% |
-| [emotion.studio](https://emotion.studio/) | 400 | 18/18 | 0 | 0 | 0.00% |
+| [grail-app.com](https://grail-app.com/) | 615 | 28 / 28 | 4 | 0 | 0.35% |
+| [emotion.studio](https://emotion.studio/) | 400 | 18 / 18 | 0 | 0 | 0.00% |
 
 <p align="center"><img src="assets/gallery/grail-app.png" width="848" alt="grail-app.com: live capture above offline replay"></p>
 <p align="center"><img src="assets/gallery/emotion-studio.png" width="848" alt="emotion.studio: live capture above offline replay"></p>
@@ -28,8 +28,8 @@
 ```bash
 node scripts/cli.mjs https://teenage.engineering
 ```
+
 Output lands in `./refs/teenage.engineering`; the last line is the absolute path. A repeat capture writes `teenage.engineering-2` and so on; `--force` replaces the folder instead.
-<p align="center"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/pipeline-dark.svg"><img src="assets/pipeline.svg" width="848" alt="Pipeline from URL to reference folder and fidelity score"></picture></p>
 
 ## Output
 
@@ -47,16 +47,22 @@ Output lands in `./refs/teenage.engineering`; the last line is the absolute path
 | `live/unproducible.json` | Canvas, video, missing asset, and other limits |
 
 ## Install
+
 **Agent skill**
+
 ```bash
 npx skills add alfar1zi/design-extractor
 ```
+
 **Claude Code plugin**
+
 ```text
 /plugin marketplace add alfar1zi/design-extractor
 /plugin install design-extractor@design-extractor
 ```
+
 **CLI from a clone**
+
 ```bash
 git clone https://github.com/alfar1zi/design-extractor.git
 cd design-extractor
@@ -64,6 +70,7 @@ npm install
 npm run install:browsers
 node scripts/cli.mjs https://example.com
 ```
+
 ## Usage
 
 The URL is the whole command. Flags cover the cases that need them:
@@ -71,6 +78,7 @@ The URL is the whole command. Flags cover the cases that need them:
 ```bash
 node scripts/cli.mjs https://example.com --target ".hero" --out ./refs/hero
 ```
+
 `--target <css>` (repeatable) writes `targets.json` and scopes tokens, components and motion to the matched selectors, while the tree, screenshots and accessibility tree stay whole-page. `--out <dir>`, `--viewport 1440x900`, `--timeout 30`, `--quick`, `--full`, `--sourcemap`, `--no-scroll`, `--no-interactions`, `--no-sweep`, `--no-states`, `--legacy-source` and `--allow-private` are available; run `--help` for the list.
 
 ## Limits
